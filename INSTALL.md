@@ -48,14 +48,17 @@ fallback rather than failing.
 | `NPS_API_KEY` | `tools/parks_client.py` | https://www.nps.gov/subjects/developer/ | free |
 | `OCM_API_KEY` | `tools/charging_client.py` | https://openchargemap.org/site/develop/api | free |
 | `OPENWEATHER_API_KEY` | `tools/weather_client.py` (fallback) | https://openweathermap.org/api | free tier |
+| `TOMTOM_API_KEY` | `tools/routing_client.py` (accurate drive times) | https://developer.tomtom.com/ | free tier |
 
 No key needed for: **NWS** weather (`api.weather.gov`, US), **OSRM** routing
-(public demo), **OpenStreetMap** map tiles (Leaflet), **Recreation.gov** links.
+(public demo; used when `TOMTOM_API_KEY` is unset, and its drive times run about
+19–34% long), **OpenStreetMap** map tiles (Leaflet), **Recreation.gov** links.
 
 ```bash
 export NPS_API_KEY=...        # optional
 export OCM_API_KEY=...        # optional
 export OPENWEATHER_API_KEY=...# optional
+export TOMTOM_API_KEY=...     # optional
 ```
 
 ## Verify the install
@@ -96,7 +99,7 @@ roadtrip-navigator/
 │   └── helper.py            parsing, mode/region detection, compare_routes()
 └── tools/                   per-source clients (each with a web-search fallback)
     ├── web_search.py        universal fallback payload builder
-    ├── routing_client.py    OSRM route distance/time + haversine fallback
+    ├── routing_client.py    TomTom (with key) or OSRM route distance/time + haversine fallback
     ├── parks_client.py      NPS API + reservation countdown
     ├── weather_client.py    NWS forecast by lat/lng
     ├── charging_client.py   Open Charge Map + EV leg check + corridor() SoC sim

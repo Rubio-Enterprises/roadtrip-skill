@@ -19,8 +19,8 @@ human. For product/domain background see [CONTEXT.md](CONTEXT.md).
   dependencies are `pytest` plus `mcp` for `tests/test_mcp_server.py`, which
   auto-skips when `mcp` is absent so the stdlib+pytest baseline stays green.
 - **Zero required API keys.** Everything must run and test with no keys and no network.
-  Keys (`NPS_API_KEY`, `OCM_API_KEY`, `OPENWEATHER_API_KEY`) are read from env vars
-  only and are strictly optional upgrades.
+  Keys (`NPS_API_KEY`, `OCM_API_KEY`, `OPENWEATHER_API_KEY`, `TOMTOM_API_KEY`) are
+  read from env vars only and are strictly optional upgrades.
 - Use `python3` (there is no `python` on the standard dev machine).
 
 ## Commands
@@ -58,6 +58,7 @@ python3 tools/places_client.py "Zzyzx, CA"   # place-name existence gate ("ABC" 
 # MCP server: serve over stdio / run its tests (the one part that needs the mcp SDK)
 pip install -e ".[dev]"                      # mcp SDK + pytest
 python3 -m mcp_server.server
+python3 -m mcp_server.server --http          # Streamable HTTP at /mcp, probe at /health
 python3 -m pytest tests/test_mcp_server.py -v
 ```
 
@@ -98,7 +99,7 @@ is deterministic rendering. (See "Data / view separation" below.)
 | `assets/generate.py` | Validates (non-fatally) and injects `tripData.json` into `template.html` → `trip.html`. |
 | `assets/template.html` | The browser view: map, day timeline, budget. All view logic lives here. |
 | `assets/tripData.*.json` + `preview*.html` | Sample trips — double as test fixtures and living schema docs. |
-| `mcp_server/` | MCP stdio server: `tools/*` + renderer + planning guide as 14 typed tools for any MCP host (Claude Code / Codex / Gemini CLI). Thin adapter — no planning logic. |
+| `mcp_server/` | MCP server (stdio by default, Streamable HTTP with `--http`): `tools/*` + renderer + planning guide as 14 typed tools for any MCP host (Claude Code / Codex / Gemini CLI). Thin adapter — no planning logic. |
 | `pyproject.toml` | Packaging for the `roadtrip-mcp` console script; the wheel vendors the server's runtime files under `mcp_server/_vendor/`. |
 | `tests/` | pytest suite (stdlib + pytest only, except `test_mcp_server.py`). CI runs exactly this. |
 
@@ -151,7 +152,9 @@ returning `{"source": "fallback", ...}`. When adding or editing a client:
 
 ### The MCP adapter (`mcp_server/`)
 `mcp_server/server.py` exposes the clients, the renderer, and the skill docs over the
-Model Context Protocol (stdio). It is a **thin adapter by contract**: input conversion
+Model Context Protocol (stdio by default; Streamable HTTP with `--http`, where
+`render_trip` refuses because a page written on the server never reaches the
+caller). It is a **thin adapter by contract**: input conversion
 and delegation only — planning logic and HTTP belong in `tools/`, rendering in
 `assets/generate.py`. Tool names are public API for host configs (`claude` / `codex` /
 `gemini mcp add`) — change them additively only. Tool docstrings are what non-Claude
@@ -189,8 +192,9 @@ the schema, reliability-grading rules, tool-routing table, and seasonal closure 
   After a live generation, `generate_trip` replaces every hard number the
   single-shot model path had to guess with the same `tools/` clients the agent
   workflow uses. In order: `refresh_trip_routing` (per-day miles/time from
-  `routing_client`/OSRM, tagged `driveSource: "osrm"`; all-or-nothing, the
-  great-circle fallback is never applied), `refresh_trip_fuel(trip, efficiency)`
+  `routing_client` — TomTom when `TOMTOM_API_KEY` is set, else OSRM — tagged
+  `driveSource: "tomtom"` or `"osrm"`; all-or-nothing, the great-circle
+  fallback is never applied), `refresh_trip_fuel(trip, efficiency)`
   (fuel/charging budget line from `fuel_client.gas_cost` / `ev_cost`, tagged
   `source: "fuel_client"`, reliability stays `estimate`),
   `refresh_trip_ev_corridor` (`evPlan` from `charging_client.corridor` using the

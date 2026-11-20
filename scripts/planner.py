@@ -1942,13 +1942,15 @@ def refresh_trip_ev_corridor(trip):
 
 
 def refresh_trip_routing(trip):
-    """Replace the model's guessed per-day driving miles/times with real OSRM
+    """Replace the model's guessed per-day driving miles/times with real
     routing over each day's stop coordinates (tools/routing_client — the same
-    engine the agent workflow uses). Day N's route starts from day N-1's last
-    stop so overnights chain correctly. All-or-nothing: only "osrm" results are
-    applied (the client's great-circle fallback is cruder than the model's own
-    guess), and the first failure abandons the whole pass so day miles and
-    totalMiles never drift apart. Best-effort, never raises; returns the trip."""
+    engine the agent workflow uses: TomTom when TOMTOM_API_KEY is set, else
+    OSRM). Day N's route starts from day N-1's last stop so overnights chain
+    correctly. Each rewritten day's driveSource names the engine that produced
+    it. All-or-nothing: only routed results are applied (the client's
+    great-circle fallback is cruder than the model's own guess), and the first
+    failure abandons the whole pass so day miles and totalMiles never drift
+    apart. Best-effort, never raises; returns the trip."""
     try:
         if _ROOT not in sys.path:
             sys.path.insert(0, _ROOT)
@@ -1966,16 +1968,15 @@ def refresh_trip_routing(trip):
             if len(wps) < 2:
                 continue                     # layover / missing coords — keep model value
             r = routing_client.route(wps)
-            if r.get("source") != "osrm":
-                return trip                  # OSRM unreachable — keep ALL model values
-            updates[i] = (int(round(r["miles"])), r["driveTime"])
+            if r.get("source") not in ("tomtom", "osrm"):
+                return trip                  # no engine reachable — keep ALL model values
+            updates[i] = (int(round(r["miles"])), r["driveTime"], r["source"])
         if not updates:
             return trip
         total = 0
         for i, d in enumerate(days):
             if i in updates:
-                d["driveMiles"], d["driveTime"] = updates[i]
-                d["driveSource"] = "osrm"
+                d["driveMiles"], d["driveTime"], d["driveSource"] = updates[i]
             total += d.get("driveMiles") or 0
         if total > 0:
             trip["totalMiles"] = int(round(total))

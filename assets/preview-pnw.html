@@ -134,6 +134,7 @@
   .day-title { font-size: 1.05rem; font-weight: 700; }
   .day-meta { color: var(--muted); font-size: .85rem; display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 8px 0 0; }
   .day-meta b { color: var(--ink); }
+  .day-meta a.gmaps-day { color: var(--ink); font-weight: 600; text-decoration: underline; }
   .tznote { color: var(--warn); font-weight: 600; }
   .stops { list-style: none; margin: 12px 0 0; padding: 0; }
   .stops li { padding: 8px 0 8px 26px; position: relative; border-top: 1px solid var(--line); }
@@ -1585,6 +1586,21 @@ var TRIP_DATA = {
     var html = (T.days || []).map(function (d, i) { return dayCard(d, i + 1); }).join("");
     el("days").innerHTML = html;
   }
+  // One Google Maps directions link per day. Google's link format takes an
+  // origin, a destination and at most 9 stops between them.
+  function gmapsDayUrl(d) {
+    if (!d || !d.from || !d.to) return "";
+    var pts = (d.stops || []).filter(function (p) {
+      return typeof p.lat === "number" && typeof p.lng === "number" && (p.lat || p.lng);
+    }).map(function (p) {
+      return p.lat + "," + p.lng;
+    }).slice(0, 9);
+    var u = "https://www.google.com/maps/dir/?api=1&travelmode=driving" +
+      "&origin=" + encodeURIComponent(d.from) +
+      "&destination=" + encodeURIComponent(d.to);
+    if (pts.length) u += "&waypoints=" + encodeURIComponent(pts.join("|"));
+    return u;
+  }
   function dayCard(d, idx) {
     var s = '<div class="card day">';
     s += '<div class="day-head"><span class="day-badge">Day ' + idx + " · " + esc(d.date) + "</span>";
@@ -1597,6 +1613,9 @@ var TRIP_DATA = {
     if (d.weather) meta.push("<span>" + (WEATHER_ICONS[d.weather.icon] || "🌡️") + " " +
       esc(d.weather.high) + "°/" + esc(d.weather.low) + "°" + tempUnit + "</span>");
     if (d.timezoneNote) meta.push('<span class="tznote">🕒 ' + esc(d.timezoneNote) + "</span>");
+    var gUrl = gmapsDayUrl(d);
+    if (gUrl) meta.push('<span><a class="gmaps-day" href="' + esc(gUrl) +
+      '" target="_blank" rel="noopener">🧭 Open this day in Google Maps</a></span>');
     s += '<div class="day-meta">' + meta.join("") + "</div>";
 
     if (d.stops && d.stops.length) {

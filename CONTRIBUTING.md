@@ -62,6 +62,7 @@ for f in tools/*.py; do echo "== $f =="; python3 "$f" > /dev/null && echo ok; do
 export NPS_API_KEY=...            # https://www.nps.gov/subjects/developer/
 export OCM_API_KEY=...            # https://openchargemap.org/site/develop/api
 export OPENWEATHER_API_KEY=...    # https://openweathermap.org/api
+export TOMTOM_API_KEY=...         # https://developer.tomtom.com/
 ```
 
 ---

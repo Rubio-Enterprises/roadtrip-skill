@@ -1,6 +1,10 @@
 import datetime as dt
+from urllib.parse import parse_qs, urlsplit
+
 import pytest
-from tools.parks_client import book_by, countdown, RELEASE_RULES
+from tests.fakenet import FakeNetwork
+from tools import parks_client
+from tools.parks_client import book_by, countdown, park_info, RELEASE_RULES
 
 
 class TestBookBy:
@@ -79,3 +83,115 @@ class TestCountdown:
         result = countdown(arrival)
         for item in result["bookingCountdown"]:
             assert item["bookBy"] == arrival
+
+
+def park(full_name, code, fees=(), name=None):
+    """One park record, cut down to the fields the NPS API sends that we read."""
+    return {
+        "fullName": full_name, "name": name or full_name.split(" National")[0],
+        "parkCode": code, "states": "NM", "url": "https://www.nps.gov/%s/index.htm" % code,
+        "description": "A park.", "latitude": "32.14", "longitude": "-104.55",
+        "entranceFees": [{"cost": cost, "title": title} for cost, title in fees],
+    }
+
+
+# Fee lists as the NPS API returned them in November 2026.
+CARLSBAD = park("Carlsbad Caverns National Park", "cave", [
+    ("1.00", "Timed Entry Reservation - Location"),
+    ("15.00", "Entrance - Per Person")])
+CEDAR_BREAKS = park("Cedar Breaks National Monument", "cebr", [
+    ("25.00", "Commercial Entrance - Sedan"),
+    ("25.00", "Entrance - Private Vehicle"),
+    ("15.00", "Entrance - Per Person"),
+    ("20.00", "Entrance - Motorcycle")])
+PETRIFIED = park("Petrified Forest National Park", "pefo", [
+    ("25.00", "Entrance - Private Vehicle"),
+    ("15.00", "Entrance - Per Person")])
+GATEWAY_ARCH = park("Gateway Arch National Park", "jeff", [
+    ("19.00", "Timed Entry Reservation - Location")])
+SANDBURG = park("Carl Sandburg Home National Historic Site", "carl")
+ALASKA = park("Alaska Public Lands", "anch")
+PETROGLYPH = park("Petroglyph National Monument", "petr")
+ZION = park("Zion National Park", "zion", [("35.00", "Entrance - Private Vehicle")])
+TUBMAN = park("Harriet Tubman National Historical Park", "hart")
+
+
+def nps(monkeypatch, parks):
+    net = FakeNetwork({"developer.nps.gov": {"total": str(len(parks)), "data": parks}})
+    monkeypatch.setattr(parks_client, "urlopen", net)
+    monkeypatch.setenv("NPS_API_KEY", "test-nps-key")
+    return net
+
+
+def names(result):
+    return [p["name"] for p in result["parks"]]
+
+
+class TestParkInfoRanking:
+    def test_asks_nps_for_its_most_relevant_matches(self, monkeypatch):
+        net = nps(monkeypatch, [CARLSBAD])
+        park_info("Carlsbad Caverns National Park")
+        asked = parse_qs(urlsplit(net.urls[0]).query)
+        assert asked["q"] == ["Carlsbad Caverns National Park"]
+        assert asked["sort"] == ["-relevanceScore"]
+        assert int(asked["limit"][0]) > 3
+
+    def test_exact_name_comes_first_whatever_order_nps_sends(self, monkeypatch):
+        nps(monkeypatch, [ALASKA, SANDBURG, PETRIFIED, CARLSBAD])
+        assert names(park_info("carlsbad caverns national park"))[0] == \
+            "Carlsbad Caverns National Park"
+
+    def test_name_starting_with_the_query_comes_first(self, monkeypatch):
+        nps(monkeypatch, [ALASKA, PETROGLYPH, PETRIFIED])
+        assert names(park_info("Petrified Forest"))[0] == "Petrified Forest National Park"
+
+    def test_park_code_counts_as_an_exact_match(self, monkeypatch):
+        nps(monkeypatch, [TUBMAN, ZION])
+        assert names(park_info("zion"))[0] == "Zion National Park"
+
+    def test_nps_order_is_kept_among_equal_matches(self, monkeypatch):
+        nps(monkeypatch, [PETROGLYPH, ALASKA, SANDBURG])
+        assert names(park_info("desert"))[:2] == [
+            "Petroglyph National Monument", "Alaska Public Lands"]
+
+    def test_returns_at_most_three_parks(self, monkeypatch):
+        nps(monkeypatch, [ALASKA, SANDBURG, PETROGLYPH, TUBMAN, CARLSBAD])
+        assert names(park_info("Carlsbad Caverns")) == [
+            "Carlsbad Caverns National Park", "Alaska Public Lands",
+            "Carl Sandburg Home National Historic Site"]
+
+
+class TestParkInfoEntranceFee:
+    def fee(self, monkeypatch, record):
+        nps(monkeypatch, [record])
+        p = park_info(record["fullName"])["parks"][0]
+        return p["entranceFee"], p["entranceFeeTitle"]
+
+    def test_timed_entry_reservation_is_not_the_entrance_fee(self, monkeypatch):
+        assert self.fee(monkeypatch, CARLSBAD) == ("15.00", "Entrance - Per Person")
+
+    def test_private_vehicle_fee_wins_over_commercial_and_per_person(self, monkeypatch):
+        assert self.fee(monkeypatch, CEDAR_BREAKS) == ("25.00", "Entrance - Private Vehicle")
+
+    def test_park_with_only_a_reservation_fee_has_no_entrance_fee(self, monkeypatch):
+        assert self.fee(monkeypatch, GATEWAY_ARCH) == (None, None)
+
+    def test_park_with_no_fees_has_no_entrance_fee(self, monkeypatch):
+        assert self.fee(monkeypatch, SANDBURG) == (None, None)
+
+
+class TestParkInfoFallback:
+    def test_no_key_asks_nobody_and_falls_back(self, monkeypatch):
+        net = nps(monkeypatch, [CARLSBAD])
+        monkeypatch.delenv("NPS_API_KEY")
+        assert park_info("Carlsbad Caverns")["source"] == "fallback"
+        assert net.urls == []
+
+    def test_nps_down_falls_back(self, monkeypatch):
+        monkeypatch.setattr(parks_client, "urlopen", FakeNetwork({}))
+        monkeypatch.setenv("NPS_API_KEY", "test-nps-key")
+        assert park_info("Carlsbad Caverns")["source"] == "fallback"
+
+    def test_no_match_falls_back(self, monkeypatch):
+        nps(monkeypatch, [])
+        assert park_info("Atlantis")["source"] == "fallback"

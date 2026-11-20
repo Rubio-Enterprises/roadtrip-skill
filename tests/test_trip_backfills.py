@@ -13,6 +13,7 @@ import pytest
 from scripts.planner import (refresh_trip_routing, refresh_trip_countdown,
                              refresh_trip_lodging_links, refresh_trip_border,
                              refresh_trip_route_options)
+from tests.fakenet import FakeNetwork
 from tools import routing_client, parks_client
 
 
@@ -73,6 +74,37 @@ class TestRoutingBackfill:
         assert "driveSource" not in trip["days"][1]
         assert trip["days"][2]["driveMiles"] == 200
         assert trip["totalMiles"] == 300  # 100 + 0 + 200
+
+    def test_tomtom_times_are_applied_and_named_when_key_is_set(self, trip, monkeypatch):
+        net = FakeNetwork({"api.tomtom.com": {"routes": [{"summary": {
+            "lengthInMeters": 257495, "travelTimeInSeconds": 9000}}]}})
+        monkeypatch.setattr(routing_client, "urlopen", net)
+        monkeypatch.setenv("TOMTOM_API_KEY", "test-key")
+        refresh_trip_routing(trip)
+        assert net.hosts() == ["api.tomtom.com", "api.tomtom.com"]
+        for i in (0, 2):
+            assert trip["days"][i]["driveMiles"] == 160
+            assert trip["days"][i]["driveTime"] == "2h30m"
+            assert trip["days"][i]["driveSource"] == "tomtom"
+        assert "driveSource" not in trip["days"][1]
+        assert trip["totalMiles"] == 320
+
+    def test_osrm_times_are_applied_and_named_without_a_key(self, trip, monkeypatch):
+        net = FakeNetwork({"router.project-osrm.org": {"code": "Ok", "routes": [
+            {"distance": 257495, "duration": 11700}]}})
+        monkeypatch.setattr(routing_client, "urlopen", net)
+        monkeypatch.delenv("TOMTOM_API_KEY", raising=False)
+        refresh_trip_routing(trip)
+        assert trip["days"][0]["driveTime"] == "3h15m"
+        assert trip["days"][0]["driveSource"] == "osrm"
+        assert trip["days"][2]["driveSource"] == "osrm"
+
+    def test_no_engine_reachable_leaves_trip_untouched(self, trip, monkeypatch):
+        monkeypatch.setattr(routing_client, "urlopen", FakeNetwork({}))
+        monkeypatch.setenv("TOMTOM_API_KEY", "test-key")
+        before = copy.deepcopy(trip)
+        refresh_trip_routing(trip)
+        assert trip == before
 
     def test_fallback_leaves_trip_untouched(self, trip, monkeypatch):
         monkeypatch.setattr(routing_client, "route",

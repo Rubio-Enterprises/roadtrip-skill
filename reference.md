@@ -33,7 +33,7 @@ missing.
       "to": "Springdale, UT",
       "driveMiles": 165,
       "driveTime": "2h45m",
-      "driveSource": "osrm",       // set when miles/time came from routing_client (else model estimate)
+      "driveSource": "tomtom",     // the routing_client engine that gave miles/time: "tomtom" | "osrm" (else model estimate)
       "overnight": "Springdale, UT",   // null on the final return day
       "timezoneNote": "PT → MT (+1h)", // shown highlighted when crossing zones
       "weather": { "icon": "sunny", "high": 88, "low": 60 },
@@ -198,7 +198,7 @@ hit official/free APIs first and fall back to web search only on failure.
 | Concern | Preferred source | Client | Fallback |
 |---------|------------------|--------|----------|
 | Place-name validation (Step 1) | **Photon geocoder (OSM, no key)** | `tools/places_client.py` | ask the user — never plan around an unverified name |
-| Route / miles / drive time | Google/Apple Directions, OSRM (OSM) | `tools/routing_client.py` | web search estimate |
+| Route / miles / drive time | **TomTom Routing API** when `TOMTOM_API_KEY` is set; else OSRM public server (no key, times ~19–34% long) | `tools/routing_client.py` | great-circle estimate + web search |
 | Map tiles | **Leaflet + OSM (no key)** | built into template | — |
 | National park info | **NPS API (free)** | `tools/parks_client.py` | nps.gov scrape / search |
 | Campgrounds / permits | **Recreation.gov** | `tools/parks_client.py` | official link + countdown |
@@ -220,7 +220,7 @@ Each `tools/*.py` exposes simple functions returning plain dicts/lists and a
 `FALLBACK` note when it could not reach a live source. None require API keys to
 *run* — without a key they return a structured "use web search" fallback rather
 than crashing. Read keys from environment variables (e.g. `NPS_API_KEY`,
-`OCM_API_KEY`, `OPENWEATHER_API_KEY`); `NWS`, `OSRM`, `Photon`, and
+`OCM_API_KEY`, `OPENWEATHER_API_KEY`, `TOMTOM_API_KEY`); `NWS`, `OSRM`, `Photon`, and
 `Open Charge Map` (demo) need no key.
 
 ## 4. Daily-drive defaults (Step 3 validation)

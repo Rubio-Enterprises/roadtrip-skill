@@ -9,7 +9,7 @@ description = "MCP server exposing the RoadTrip Navigator skill's data tools and
 readme = "mcp_server/README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
-dependencies = ["mcp>=1.2,<2"]
+dependencies = ["mcp>=1.23.0,<2"]
 
 [project.urls]
 Homepage = "https://github.com/Waybox-AI/roadtrip-skill"

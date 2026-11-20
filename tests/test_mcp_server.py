@@ -96,6 +96,16 @@ class TestDelegation:
         assert out["miles"] == 158.7
         assert seen["pts"] == [(36.1699, -115.1398), (37.2982, -113.0263)]
 
+    def test_route_reports_tomtom_and_never_the_key(self, monkeypatch):
+        from tests.fakenet import FakeNetwork
+        net = FakeNetwork({"api.tomtom.com": {"routes": [{"summary": {
+            "lengthInMeters": 929314, "travelTimeInSeconds": 29046}}]}})
+        monkeypatch.setattr(srv.routing_client, "urlopen", net)
+        monkeypatch.setenv("TOMTOM_API_KEY", "test-key-0123456789")
+        out = call("route", {"waypoints": [[35.0841, -106.65099], [36.16743, -115.14841]]})
+        assert out == {"source": "tomtom", "miles": 577.5, "driveTime": "8h04m", "hours": 8.07}
+        assert net.hosts() == ["api.tomtom.com"]
+
     def test_route_rejects_malformed_waypoint(self):
         out = call("route", {"waypoints": [[36.17]]})
         assert out["source"] == "error"
