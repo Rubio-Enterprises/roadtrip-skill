@@ -197,8 +197,9 @@ def weather_climatology(lat: float, lng: float, month: int, day: int,
 # --------------------------------------------------------------------------- #
 @mcp.tool()
 def park_info(query: str) -> dict:
-    """Official national-park info via the NPS API: name, states, entrance fee,
-    coordinates, description, nps.gov URL (top 3 matches).
+    """Official national-park info via the NPS API: name, states, entrance fee
+    (entranceFeeTitle says whether it is per vehicle or per person),
+    coordinates, description, nps.gov URL. Up to 3 parks, best name match first.
 
     Needs the free NPS_API_KEY env var on the server; without it (or on API
     failure) returns the web-search fallback shape pointing at nps.gov.

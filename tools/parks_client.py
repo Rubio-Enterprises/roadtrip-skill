@@ -36,26 +36,53 @@ RELEASE_RULES = {
 }
 
 
+def _name_rank(park, query):
+    """0 = the query is the park's name or code, 1 = its name starts with the
+    query, 2 = contains it, 3 = neither."""
+    q = query.strip().lower()
+    full = (park.get("fullName") or "").lower()
+    if q in (full, (park.get("name") or "").lower(), (park.get("parkCode") or "").lower()):
+        return 0
+    if full.startswith(q):
+        return 1
+    return 2 if q in full else 3
+
+
+def _entrance_fee(fees):
+    """The fee to drive in, else to walk in. NPS lists timed-entry reservations
+    and commercial-tour rates in the same array, sometimes first."""
+    for title in ("Entrance - Private Vehicle", "Entrance - Per Person"):
+        for fee in fees:
+            if fee.get("title") == title:
+                return fee
+    return None
+
+
 def park_info(query, timeout=8):
-    """Look up a park by name/keyword via the NPS API."""
+    """Look up a park by name/keyword via the NPS API. Best name match first."""
     key = os.environ.get("NPS_API_KEY")
     if not key:
         return fallback("no NPS_API_KEY set",
                         [query + " national park hours fees alerts site:nps.gov"],
                         ["https://www.nps.gov/findapark/index.htm"])
     try:
-        url = NPS_BASE + "?" + urlencode({"q": query, "limit": 3, "api_key": key})
+        # NPS matches any word of the query and answers alphabetically unless
+        # asked to sort by relevance.
+        url = NPS_BASE + "?" + urlencode({"q": query, "limit": 10,
+                                          "sort": "-relevanceScore", "api_key": key})
         with urlopen(url, timeout=timeout) as r:
             data = json.loads(r.read().decode())
+        parks = sorted(data.get("data", []), key=lambda p: _name_rank(p, query))
         out = []
-        for p in data.get("data", []):
-            fees = p.get("entranceFees", [])
+        for p in parks[:3]:
+            fee = _entrance_fee(p.get("entranceFees") or [])
             out.append({
                 "name": p.get("fullName"),
                 "states": p.get("states"),
                 "url": p.get("url"),
                 "description": (p.get("description") or "")[:200],
-                "entranceFee": fees[0].get("cost") if fees else None,
+                "entranceFee": fee.get("cost") if fee else None,
+                "entranceFeeTitle": fee.get("title") if fee else None,
                 "lat": _f(p.get("latitude")),
                 "lng": _f(p.get("longitude")),
             })
