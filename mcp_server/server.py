@@ -3,7 +3,8 @@
 server.py — MCP server for the RoadTrip Navigator skill.
 
 Exposes the skill's deterministic capabilities to ANY MCP host (Claude Code,
-Codex CLI, Gemini CLI, Cursor, ...) over stdio:
+Codex CLI, Gemini CLI, Cursor, ...) over stdio, or over Streamable HTTP when
+started with --http:
 
   * the 10 data clients in tools/ as 12 typed tools (routing, weather, parks,
     reservation countdown, EV charging, border/customs rules, fuel, lodging,
@@ -23,8 +24,11 @@ should run those queries with its own web-search tool.
 
 Run directly:            python3 -m mcp_server.server
 Installed console script: roadtrip-mcp
+Over Streamable HTTP:     roadtrip-mcp --http --host 0.0.0.0 --allowed-host NAME
+                          (endpoint /mcp, liveness probe GET /health)
 """
 
+import argparse
 import datetime
 import sys
 from importlib import util as _importlib_util
@@ -32,6 +36,8 @@ from pathlib import Path
 from typing import Literal
 
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
+from starlette.responses import JSONResponse
 
 # --------------------------------------------------------------------------- #
 # Layout resolution: repo checkout vs installed wheel
@@ -374,7 +380,13 @@ def render_trip(trip_data: dict, output_path: str = "trip.html") -> dict:
     conversation context). Get the
     tripData contract from get_planning_guide(topic='schema') first; warnings
     list schema gaps (missing coords, budget mismatch, ...) without failing.
+
+    A server reached over HTTP cannot hand you a file: there this returns an
+    error, and you render with the skill's own script instead
+    (python3 assets/generate.py tripData.json -o trip.html).
     """
+    if _SERVING_HTTP:
+        return {"source": "error", "reason": _REMOTE_RENDER}
     out = Path(output_path).expanduser().resolve()
     if out.suffix.lower() not in (".html", ".htm"):
         return {"source": "error",
@@ -413,7 +425,10 @@ How to use the roadtrip-navigator MCP tools when planning a trip:
    US/CA/MX borders.
 7. fuel_cost + lodging_quote — budget lines, graded estimate/reference.
 8. render_trip — final step: turn the assembled tripData JSON (contract:
-   get_planning_guide(topic='schema')) into the single-file HTML page.
+   get_planning_guide(topic='schema')) into the single-file HTML page. Only a
+   server on your own machine can write that page. A server reached over HTTP
+   answers with an error: render with the skill's own script instead,
+   python3 assets/generate.py tripData.json -o trip.html
 
 Failure contract: any tool may return {"source": "fallback", "searchQueries":
 [...], "suggestedSources": [...]} when its live source is unreachable. Run the
@@ -471,9 +486,65 @@ def plan_road_trip(request: str = "") -> str:
                           "party, and vehicle)"))
 
 
-def main():
-    """Console-script entry point: serve over stdio."""
-    mcp.run()
+# --------------------------------------------------------------------------- #
+# Transports
+# --------------------------------------------------------------------------- #
+# True once main() serves HTTP: the caller is then on another machine, and a
+# page render_trip wrote here would never reach it.
+_SERVING_HTTP = False
+_REMOTE_RENDER = ("this roadtrip-navigator server is remote, so a page written "
+                  "here would not reach you. Render it where the skill is "
+                  "installed: python3 assets/generate.py tripData.json -o trip.html")
+
+
+@mcp.custom_route("/health", methods=["GET"])
+async def health(request):
+    """Liveness probe for an orchestrator. Answers whatever the Host header."""
+    return JSONResponse({"status": "ok"})
+
+
+def _http_security(allowed_hosts):
+    """Host and Origin values the /mcp endpoint answers to: loopback, plus each
+    name given. A name is accepted alone or with any port, which covers both
+    `Host: name` (behind a proxy on 80/443) and `Host: name:8000`. A name given
+    with a port matches that port only."""
+    hosts, origins = [], []
+    for name in ["127.0.0.1", "localhost", "[::1]"] + list(allowed_hosts):
+        forms = [name, name + ":*"]
+        hosts += forms
+        origins += [scheme + f for scheme in ("http://", "https://") for f in forms]
+    return TransportSecuritySettings(enable_dns_rebinding_protection=True,
+                                     allowed_hosts=hosts, allowed_origins=origins)
+
+
+def main(argv=None):
+    """Console-script entry point: stdio by default, Streamable HTTP with --http."""
+    ap = argparse.ArgumentParser(
+        prog="roadtrip-mcp",
+        description="RoadTrip Navigator MCP server. Serves stdio unless --http is given.")
+    ap.add_argument("--http", action="store_true",
+                    help="serve Streamable HTTP at /mcp (stateless, no authentication: "
+                         "put it behind a gateway) with a liveness probe at GET /health")
+    ap.add_argument("--host", help="with --http: address to bind (default 127.0.0.1)")
+    ap.add_argument("--port", type=int, help="with --http: port to bind (default 8000)")
+    ap.add_argument("--allowed-host", action="append", default=[], metavar="NAME",
+                    help="with --http: a Host header value to answer besides loopback, "
+                         "such as the name the gateway calls this server by. Repeatable. "
+                         "Any other Host gets HTTP 421.")
+    args = ap.parse_args(argv)
+    if not args.http:
+        if args.host or args.port or args.allowed_host:
+            ap.error("--host, --port and --allowed-host need --http")
+        mcp.run()
+        return
+
+    global _SERVING_HTTP
+    _SERVING_HTTP = True
+    mcp.settings.host = args.host or "127.0.0.1"
+    mcp.settings.port = args.port or 8000
+    mcp.settings.stateless_http = True
+    mcp.settings.transport_security = _http_security(args.allowed_host)
+    mcp.run(transport="streamable-http")
 
 
 if __name__ == "__main__":

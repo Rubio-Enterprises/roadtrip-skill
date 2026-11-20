@@ -45,6 +45,28 @@ From a local checkout (contributors), point the same hosts at:
 python3 -m mcp_server.server   # run from the repo root
 ```
 
+### Serve over HTTP (hosted, behind a gateway)
+
+With no arguments the server speaks stdio, as above. To host it, start it over
+[Streamable HTTP](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports#streamable-http):
+
+```bash
+roadtrip-mcp --http --host 0.0.0.0 --port 8000 --allowed-host roadtrip-mcp
+```
+
+| | |
+|---|---|
+| Endpoint | `POST /mcp`. Stateless: no session is issued, so any replica can answer any request. |
+| Probe | `GET /health` returns `200` and `{"status": "ok"}`. It answers whatever the `Host` header, so an orchestrator can probe by address. |
+| `--host`, `--port` | Address and port to bind. Defaults `127.0.0.1` and `8000`. |
+| `--allowed-host NAME` | A `Host` header value `/mcp` answers besides loopback: the name the gateway calls the server by. Repeatable. `NAME` matches with any port or none; `NAME:PORT` matches that port only. Any other `Host` gets `421`. |
+| Authentication | None. Put it behind a gateway and let the network make that gateway the only caller. |
+| Keys | The same environment variables as below. |
+
+`render_trip` does not work over HTTP: a page written on the server would
+never reach the caller. It returns an error that says to render where the skill
+is installed, with `python3 assets/generate.py tripData.json -o trip.html`.
+
 ### Optional API keys (server-side env)
 
 Everything works without keys; three tools get better with them:

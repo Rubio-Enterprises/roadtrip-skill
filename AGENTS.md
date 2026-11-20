@@ -58,6 +58,7 @@ python3 tools/places_client.py "Zzyzx, CA"   # place-name existence gate ("ABC" 
 # MCP server: serve over stdio / run its tests (the one part that needs the mcp SDK)
 pip install -e ".[dev]"                      # mcp SDK + pytest
 python3 -m mcp_server.server
+python3 -m mcp_server.server --http          # Streamable HTTP at /mcp, probe at /health
 python3 -m pytest tests/test_mcp_server.py -v
 ```
 
@@ -98,7 +99,7 @@ is deterministic rendering. (See "Data / view separation" below.)
 | `assets/generate.py` | Validates (non-fatally) and injects `tripData.json` into `template.html` → `trip.html`. |
 | `assets/template.html` | The browser view: map, day timeline, budget. All view logic lives here. |
 | `assets/tripData.*.json` + `preview*.html` | Sample trips — double as test fixtures and living schema docs. |
-| `mcp_server/` | MCP stdio server: `tools/*` + renderer + planning guide as 14 typed tools for any MCP host (Claude Code / Codex / Gemini CLI). Thin adapter — no planning logic. |
+| `mcp_server/` | MCP server (stdio by default, Streamable HTTP with `--http`): `tools/*` + renderer + planning guide as 14 typed tools for any MCP host (Claude Code / Codex / Gemini CLI). Thin adapter — no planning logic. |
 | `pyproject.toml` | Packaging for the `roadtrip-mcp` console script; the wheel vendors the server's runtime files under `mcp_server/_vendor/`. |
 | `tests/` | pytest suite (stdlib + pytest only, except `test_mcp_server.py`). CI runs exactly this. |
 
@@ -151,7 +152,9 @@ returning `{"source": "fallback", ...}`. When adding or editing a client:
 
 ### The MCP adapter (`mcp_server/`)
 `mcp_server/server.py` exposes the clients, the renderer, and the skill docs over the
-Model Context Protocol (stdio). It is a **thin adapter by contract**: input conversion
+Model Context Protocol (stdio by default; Streamable HTTP with `--http`, where
+`render_trip` refuses because a page written on the server never reaches the
+caller). It is a **thin adapter by contract**: input conversion
 and delegation only — planning logic and HTTP belong in `tools/`, rendering in
 `assets/generate.py`. Tool names are public API for host configs (`claude` / `codex` /
 `gemini mcp add`) — change them additively only. Tool docstrings are what non-Claude

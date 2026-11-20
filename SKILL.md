@@ -182,6 +182,10 @@ food. Force a bottom disclaimer: prices are dynamic, confirm before departure.
    route link on every day that has `from` and `to`) + daily timeline +
    reservation to-do + budget.
    Responsive (mobile single-column / desktop multi-column) + print friendly.
+   **When the roadtrip-navigator MCP server is remote** (reached over HTTP, for
+   example through a gateway), render with this local script, not the server's
+   `render_trip` tool: a remote server cannot hand you a file, and its
+   `render_trip` answers with an error telling you to run this command.
 3. **Validate before delivering** (plan §9): the generator already does a light
    schema check and a JSON parse of the injected data. Optionally syntax-check
    the inline JS, then open/preview.
