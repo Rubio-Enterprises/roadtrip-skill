@@ -8,9 +8,9 @@ after so you can SEE the tools/ clients rewrite the hard numbers.
 Run from anywhere:
     python3 examples/backfill_demo.py
 
-No API key needed. Routing hits the OSRM public server (needs network); if it's
-unreachable the routing pass keeps the model's miles (all-or-nothing) and every
-other backfill still runs offline.
+No API key needed. Routing hits TomTom when TOMTOM_API_KEY is set, else the OSRM
+public server (both need network); if neither answers the routing pass keeps the
+model's miles (all-or-nothing) and every other backfill still runs offline.
 """
 import os
 import sys
@@ -71,7 +71,7 @@ def show(tag):
 
 if __name__ == "__main__":
     show("BEFORE (model's guesses)")
-    planner.refresh_trip_routing(trip)          # needs OSRM (network)
+    planner.refresh_trip_routing(trip)          # needs TomTom or OSRM (network)
     planner.refresh_trip_fuel(trip, efficiency=None)
     planner.refresh_trip_ev_corridor(trip)
     planner.refresh_trip_countdown(trip)

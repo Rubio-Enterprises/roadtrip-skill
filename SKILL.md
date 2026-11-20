@@ -126,6 +126,17 @@ comparison table with the chosen route flagged.
 Rule of thumb: **plan by daylight, not by odometer** — a day that ends after
 dark fails at the trailhead, not on the map.
 
+**Where the hours come from.** Measure every leg with `tools/routing_client.py`
+(the MCP `route` tool) and read `source` in its answer. `tomtom` means the
+TomTom Routing API answered (used when `TOMTOM_API_KEY` is set): typical-traffic
+times, close to a maps app. `osrm` means the keyless OSRM public server
+answered: its miles are right but its times run about 19–34% long, because that
+server drives at 80% of every posted limit — say so in the day, and don't cut a
+stop on the strength of an `osrm` time alone. `fallback` is a straight-line
+estimate: grade it `estimate` and check it with a web search. Neither engine
+knows road closures: a pass shut for the season still routes as open, so the
+closure check above is yours to do, not the router's.
+
 ### Step 4 — Parallel research (sub-agents)
 Fan out (one concern per sub-agent, run concurrently): weather (per day),
 lodging/campgrounds (price + booking difficulty), fuel/charging points,

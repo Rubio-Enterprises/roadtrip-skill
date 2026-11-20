@@ -47,10 +47,11 @@ python3 -m mcp_server.server   # run from the repo root
 
 ### Optional API keys (server-side env)
 
-Everything works without keys; two tools get better with them:
+Everything works without keys; three tools get better with them:
 
 | Env var | Tool | Without it |
 |---|---|---|
+| `TOMTOM_API_KEY` ([free tier](https://developer.tomtom.com/)) | `route` | OSRM public server: right miles, drive times about 19–34% long |
 | `NPS_API_KEY` ([free](https://www.nps.gov/subjects/developer/)) | `park_info` | web-search fallback |
 | `OCM_API_KEY` ([free](https://openchargemap.org/site/developerinfo)) | `chargers_near` | demo quota, may throttle |
 

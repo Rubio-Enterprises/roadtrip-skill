@@ -19,8 +19,8 @@ human. For product/domain background see [CONTEXT.md](CONTEXT.md).
   dependencies are `pytest` plus `mcp` for `tests/test_mcp_server.py`, which
   auto-skips when `mcp` is absent so the stdlib+pytest baseline stays green.
 - **Zero required API keys.** Everything must run and test with no keys and no network.
-  Keys (`NPS_API_KEY`, `OCM_API_KEY`, `OPENWEATHER_API_KEY`) are read from env vars
-  only and are strictly optional upgrades.
+  Keys (`NPS_API_KEY`, `OCM_API_KEY`, `OPENWEATHER_API_KEY`, `TOMTOM_API_KEY`) are
+  read from env vars only and are strictly optional upgrades.
 - Use `python3` (there is no `python` on the standard dev machine).
 
 ## Commands
@@ -189,8 +189,9 @@ the schema, reliability-grading rules, tool-routing table, and seasonal closure 
   After a live generation, `generate_trip` replaces every hard number the
   single-shot model path had to guess with the same `tools/` clients the agent
   workflow uses. In order: `refresh_trip_routing` (per-day miles/time from
-  `routing_client`/OSRM, tagged `driveSource: "osrm"`; all-or-nothing, the
-  great-circle fallback is never applied), `refresh_trip_fuel(trip, efficiency)`
+  `routing_client` — TomTom when `TOMTOM_API_KEY` is set, else OSRM — tagged
+  `driveSource: "tomtom"` or `"osrm"`; all-or-nothing, the great-circle
+  fallback is never applied), `refresh_trip_fuel(trip, efficiency)`
   (fuel/charging budget line from `fuel_client.gas_cost` / `ev_cost`, tagged
   `source: "fuel_client"`, reliability stays `estimate`),
   `refresh_trip_ev_corridor` (`evPlan` from `charging_client.corridor` using the

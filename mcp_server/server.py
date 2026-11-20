@@ -136,13 +136,18 @@ def validate_place(name: str, na_bias: bool = True, limit: int = 8) -> dict:
 # --------------------------------------------------------------------------- #
 @mcp.tool()
 def route(waypoints: list[list[float]]) -> dict:
-    """Real driving distance and time through 2+ waypoints (OSRM, no key).
+    """Real driving distance and time through 2+ waypoints: TomTom when the
+    server has TOMTOM_API_KEY, else OSRM (no key).
 
-    waypoints: ordered [[lat, lng], ...]. Returns {miles, driveTime "XhYYm",
-    hours}. On OSRM failure falls back to great-circle x 1.25 road factor and
-    includes web-search queries — grade that result as an estimate, not
-    verified. Use this instead of guessing distances: it is the basis for
-    daily-drive segmentation.
+    waypoints: ordered [[lat, lng], ...]. Returns {source, miles, driveTime
+    "XhYYm", hours}. Read source: 'tomtom' times are typical-traffic and close
+    to a maps app; 'osrm' times run about 19-34% long (its public server drives
+    at 80% of every posted limit), so trust its miles and discount its hours.
+    Neither engine knows road closures — a pass shut for the season routes as
+    open — so check closures separately. When neither engine answers it falls
+    back to great-circle x 1.25 road factor and includes web-search queries —
+    grade that result as an estimate, not verified. Use this instead of
+    guessing distances: it is the basis for daily-drive segmentation.
     """
     pts = []
     for w in waypoints:
@@ -414,7 +419,8 @@ Failure contract: any tool may return {"source": "fallback", "searchQueries":
 queries with your own web-search tool and grade the answer accordingly
 (verified / reference / estimate).
 
-Optional server-side env keys: NPS_API_KEY (park_info), OCM_API_KEY
+Optional server-side env keys: TOMTOM_API_KEY (route: without it drive times
+come from OSRM and run about 19-34% long), NPS_API_KEY (park_info), OCM_API_KEY
 (chargers_near reliability). Everything else needs no key.
 """
 
