@@ -178,7 +178,9 @@ food. Force a bottom disclaimer: prices are dynamic, confirm before departure.
    re-renderable).
 2. Render: `python3 assets/generate.py tripData.json -o trip.html`
    → Leaflet map (numbered stops + ordered polyline) + one-tap mobile nav
-   (Google/Apple deep links) + daily timeline + reservation to-do + budget.
+   (Google/Apple deep links per stop, plus an "Open this day in Google Maps"
+   route link on every day that has `from` and `to`) + daily timeline +
+   reservation to-do + budget.
    Responsive (mobile single-column / desktop multi-column) + print friendly.
 3. **Validate before delivering** (plan §9): the generator already does a light
    schema check and a JSON parse of the injected data. Optionally syntax-check
