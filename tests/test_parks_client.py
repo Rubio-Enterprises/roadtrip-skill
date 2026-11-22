@@ -51,6 +51,10 @@ class TestBookBy:
 
 
 class TestCountdown:
+    def test_parks_countdown_assigns_categories(self):
+        items = countdown("2030-09-12")["bookingCountdown"]
+        assert [item["category"] for item in items] == ["hotel", "attraction", "hotel"]
+
     def test_returns_expected_keys(self):
         result = countdown("2027-06-01")
         assert result["source"] == "rules"

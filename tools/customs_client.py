@@ -7,8 +7,7 @@ duty-free, keyed by residence country and hours spent abroad (the 24h / 48h
 thresholds the model must never recall from memory). This is rules, not live
 data — amounts change; always confirm against CBP / CBSA / SAT before travel.
 
-User-facing strings come in English (`note`) and Simplified Chinese (`noteZh`)
-so rendered itineraries stay language-independent.
+User-facing strings come in English (`note`) and Simplified Chinese (`noteZh`).
 
 CLI:
     python3 customs_client.py US 72             # US resident, 72h abroad

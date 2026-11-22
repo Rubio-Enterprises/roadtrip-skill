@@ -1,111 +1,29 @@
-# Install — RoadTrip Navigator skill
+# Install and connect
 
-## Requirements
+Use uv with Python 3.10 or newer. From this checkout, `uv tool install .` installs
+`roadtrip-mcp`. Configure a stdio MCP client to launch it with no arguments.
+To run directly from a pinned revision instead, supply the reviewed fork commit:
 
-- **Python 3.8+** (standard library only — no `pip install` needed to run).
-- **Node.js** (optional) — only for the JS syntax self-check in `node -e`.
-- An agent with a **web-search tool** (Claude Code / Codex / Cursor). The clients
-  in `tools/` fall back to "search this" instructions when live APIs aren't
-  reachable, and the agent runs those searches.
-- Network access is **optional**: with no network and no API keys the skill still
-  produces a full itinerary HTML (research falls back to web search / estimates).
+    uvx --from "git+https://github.com/Rubio-Enterprises/roadtrip-skill@$COMMIT" roadtrip-mcp
 
-## Install in Claude Code (plugin marketplace)
+## Gateway deployment
 
-Two commands — no clone, no API key:
+    roadtrip-mcp --http --host 0.0.0.0 --port 8000 --allowed-host roadtrip-mcp
 
-```text
-/plugin marketplace add Waybox-AI/roadtrip-skill
-/plugin install roadtrip-navigator@roadtrip-skill
-```
+Without overrides the HTTP bind address is 127.0.0.1:8000. Restrict inbound access to
+an authenticating gateway; the server does not authenticate clients. Pass the name the
+gateway forwards as `Host` to `--allowed-host` (repeatable). Connect to `/mcp` using
+Streamable HTTP. The endpoint is stateless; unlisted non-loopback hosts receive 421.
+`GET /health` accepts any Host and returns 200 with `{"status":"ok"}`.
 
-## Install manually as an Agent Skill
+## Server-side environment
 
-Or copy/symlink the skill into your agent's skills directory so it can discover
-`SKILL.md`:
+| Variable | Effect when absent |
+| --- | --- |
+| `TOMTOM_API_KEY` | `route` uses OSRM, or estimates if routing is unavailable. |
+| `GOOGLE_ROUTES_API_KEY` | `route_legs` returns an error; there is no substitute engine. Google bills per request. |
+| `NPS_API_KEY` | `park_info` returns search queries for official park information. |
+| `OCM_API_KEY` | Charger lookup attempts Open Charge Map without a personal key; availability is limited. |
 
-```bash
-git clone https://github.com/Waybox-AI/roadtrip-skill
-
-# project-level
-mkdir -p .claude/skills
-cp -r roadtrip-skill .claude/skills/roadtrip-navigator
-
-# or user-level
-cp -r roadtrip-skill ~/.claude/skills/roadtrip-navigator
-```
-
-The agent loads the skill when a request matches the `read-when` triggers in
-`SKILL.md` (road trip, self drive, 自驾, national park, EV road trip, …).
-
-## Optional API keys (better data, never required)
-
-Set as environment variables. Without them, each client returns a graceful
-fallback rather than failing.
-
-| Variable | Used by | Get it from | Cost |
-|----------|---------|-------------|------|
-| `NPS_API_KEY` | `tools/parks_client.py` | https://www.nps.gov/subjects/developer/ | free |
-| `OCM_API_KEY` | `tools/charging_client.py` | https://openchargemap.org/site/develop/api | free |
-| `OPENWEATHER_API_KEY` | `tools/weather_client.py` (fallback) | https://openweathermap.org/api | free tier |
-| `TOMTOM_API_KEY` | `tools/routing_client.py` (accurate drive times) | https://developer.tomtom.com/ | free tier |
-| `GOOGLE_ROUTES_API_KEY` | `tools/google_routes.py` (which road Google takes, leg by leg) | https://developers.google.com/maps/documentation/routes | billed per request, free monthly allowance |
-
-No key needed for: **NWS** weather (`api.weather.gov`, US), **OSRM** routing
-(public demo; used when `TOMTOM_API_KEY` is unset, and its drive times run about
-19–34% long), **OpenStreetMap** map tiles (Leaflet), **Recreation.gov** links.
-
-```bash
-export NPS_API_KEY=...        # optional
-export OCM_API_KEY=...        # optional
-export OPENWEATHER_API_KEY=...# optional
-export TOMTOM_API_KEY=...     # optional
-```
-
-## Verify the install
-
-```bash
-# 1) Renderer + bundled demo (should print "Wrote ... 7 days")
-python3 assets/generate.py assets/tripData.example.json -o assets/preview.html
-
-# 2) Open the result
-open assets/preview.html        # macOS
-xdg-open assets/preview.html    # Linux
-
-# 3) Slot parser
-python3 scripts/helper.py "from Las Vegas, 7 days, 2 adults, gas, southwest loop"
-
-# 4) Tool clients (all should print JSON, falling back if offline)
-for f in tools/*.py; do echo "== $f =="; python3 "$f" >/dev/null && echo ok; done
-```
-
-## Files
-
-```
-roadtrip-navigator/
-├── SKILL.md                 entry: triggers, two modes, 7-step workflow
-├── reference.md             tripData schema, reliability grading, tool routing
-├── AGENTS.md                technical rules + worked prompts (light/heavy/EV/cross-border)
-├── INSTALL.md               this file
-├── assets/
-│   ├── template.html        single-file HTML renderer (Leaflet + timeline)
-│   ├── generate.py          tripData.json → HTML
-│   ├── tripData.example.json Southwest 7-day demo data
-│   ├── preview.html         rendered Southwest demo
-│   ├── tripData.tahoe.json  Sunnyvale→Tahoe 3-day demo data
-│   ├── preview-tahoe.html   rendered Tahoe demo
-│   ├── tripData.pnw.json    Seattle→Vancouver EV cross-border demo data
-│   └── preview-pnw.html     rendered PNW demo (route compare + border + EV)
-├── scripts/
-│   └── helper.py            parsing, mode/region detection, compare_routes()
-└── tools/                   per-source clients (each with a web-search fallback)
-    ├── web_search.py        universal fallback payload builder
-    ├── google_routes.py     Google Routes API: each leg's distance, time and path (needs a key)
-    ├── routing_client.py    TomTom (with key) or OSRM route distance/time + haversine fallback
-    ├── parks_client.py      NPS API + reservation countdown
-    ├── weather_client.py    NWS forecast by lat/lng
-    ├── charging_client.py   Open Charge Map + EV leg check + corridor() SoC sim
-    ├── border_client.py     US↔CA↔MX documents/insurance/units checklist
-    ├── fuel_client.py       fuel / charging cost estimator
-    └── lodging_client.py    lodging search links + reference pricing
-```
+Check the connection by listing tools and calling `fuel_cost` with miles 100, MPG 25
+and price per US gallon 5. The estimated cost should be 20; no network or key is needed.

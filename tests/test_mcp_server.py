@@ -2,7 +2,7 @@
 
 The client functions themselves are covered by their own test files; here we
 test what the adapter adds: tool registration/schemas, input conversion,
-delegation, the render_trip file contract, and get_planning_guide extraction.
+delegation, and the planning guides.
 Every network-touching client function is monkeypatched — no test hits the
 network.
 """
@@ -13,7 +13,7 @@ import json
 import pytest
 
 pytest.importorskip(
-    "mcp", reason="mcp SDK not installed — pip install -e '.[dev]' to run these")
+    "mcp", reason="mcp SDK not installed; run the dev suite described in DEVELOPMENT.md")
 
 from mcp_server import server as srv  # noqa: E402
 
@@ -21,7 +21,7 @@ EXPECTED_TOOLS = {
     "validate_place", "route", "route_legs", "weather_forecast", "weather_climatology",
     "park_info", "reservation_countdown", "chargers_near", "ev_corridor",
     "border_crossing", "customs_exemption", "fuel_cost", "lodging_quote",
-    "render_trip", "get_planning_guide",
+    "get_planning_guide",
 }
 
 
@@ -55,7 +55,6 @@ class TestRegistry:
         ("ev_corridor", "usable_range_miles"),
         ("border_crossing", "crossings"),
         ("reservation_countdown", "arrival_date"),
-        ("render_trip", "trip_data"),
     ])
     def test_required_params_in_schema(self, tool, required):
         t = next(t for t in list_tools() if t.name == tool)
@@ -249,56 +248,19 @@ class TestRulesTools:
         assert out["searchQueries"] and isinstance(out["suggestedSources"], list)
 
 
-class TestRenderTrip:
-    TRIP = {
-        "title": "Vegas Loop",
-        "disclaimer": "Verify everything before you drive.",
-        "days": [{
-            "date": "2030-09-12", "title": "Vegas → Zion",
-            "stops": [{"name": "Zion NP", "lat": 37.2982, "lng": -113.0263}],
-        }],
-    }
-
-    def test_writes_page_and_reports_contract(self, tmp_path):
-        out_file = tmp_path / "trip.html"
-        out = call("render_trip", {"trip_data": self.TRIP,
-                                   "output_path": str(out_file)})
-        assert out["path"] == str(out_file)
-        assert out_file.exists()
-        assert out["days"] == 1
-        assert out["sizeKB"] > 0
-        assert out["warnings"] == []
-        assert "Vegas Loop" in out_file.read_text(encoding="utf-8")
-
-    def test_schema_gaps_surface_as_warnings(self, tmp_path):
-        out = call("render_trip", {"trip_data": {"title": "Bare"},
-                                   "output_path": str(tmp_path / "bare.html")})
-        assert any("days" in w for w in out["warnings"])
-
-    def test_refuses_non_html_output_path(self, tmp_path):
-        out = call("render_trip", {"trip_data": self.TRIP,
-                                   "output_path": str(tmp_path / "evil.sh")})
-        assert out["source"] == "error" and ".html" in out["reason"]
-        assert not (tmp_path / "evil.sh").exists()
-
-    def test_refuses_missing_parent_dir(self, tmp_path):
-        out = call("render_trip", {"trip_data": self.TRIP,
-                                   "output_path": str(tmp_path / "no/such/dir/t.html")})
-        assert out["source"] == "error" and "directory" in out["reason"]
-
-
 class TestPlanningGuide:
-    def test_workflow_strips_frontmatter(self):
-        text = call("get_planning_guide", {"topic": "workflow"})
-        assert text.startswith("# RoadTrip Navigator")
-        assert "name: roadtrip-navigator" not in text  # frontmatter fields gone
+    def test_workflow_hands_the_plan_to_the_caller(self):
+        workflow = call("get_planning_guide", {})
+        assert workflow == call("get_planning_guide", {"topic": "workflow"})
+        assert "Plan by daylight" in workflow
+        assert workflow.rstrip().endswith("Hand the plan to the caller.")
 
-    def test_schema_returns_reference_doc(self):
-        assert "tripData" in call("get_planning_guide", {"topic": "schema"})
+    def test_tools_guide_names_every_data_tool(self):
+        guide = call("get_planning_guide", {"topic": "tools"})
+        for name in EXPECTED_TOOLS - {"get_planning_guide"}:
+            assert f"`{name}`" in guide
+        assert "searchQueries" in guide
 
-    def test_tools_guide_covers_order_and_fallback(self):
-        text = call("get_planning_guide", {"topic": "tools"})
-        assert "validate_place" in text and "fallback" in text
-
-    def test_default_topic_is_workflow(self):
-        assert call("get_planning_guide", {}).startswith("# RoadTrip Navigator")
+    def test_guide_topics(self):
+        tool = next(t for t in list_tools() if t.name == "get_planning_guide")
+        assert set(tool.inputSchema["properties"]["topic"]["enum"]) == {"workflow", "tools"}
