@@ -1,14 +1,6 @@
-"""Weather provenance (PR①): weather_client's NWS→Open-Meteo→climatology
-ladder and its WMO parsing, plus planner.refresh_trip_weather tagging days
-forecast vs climatology. All network calls are stubbed — the suite is offline.
-"""
-
-import json
-
-import pytest
+"""Weather codes, forecast source order, and seasonal archive parsing."""
 
 from tools import weather_client as wc
-from scripts import planner
 
 
 # --------------------------------------------------------------------------- #
@@ -26,7 +18,7 @@ def _fake_http(mapping):
 
 
 class TestWmoMapping:
-    def test_codes_map_to_renderer_icons(self):
+    def test_codes_map_to_weather_icons(self):
         assert wc._wmo_icon(0) == "sunny"
         assert wc._wmo_icon(3) == "cloudy"
         assert wc._wmo_icon(65) == "rain"
@@ -97,64 +89,3 @@ class TestClimatology:
     def test_empty_archive_returns_none(self, monkeypatch):
         monkeypatch.setattr(wc, "_get_json", _fake_http({"archive": {"daily": {}}}))
         assert wc.climatology(37.3, -113.0, 9, 13) is None
-
-
-# --------------------------------------------------------------------------- #
-# planner.refresh_trip_weather: whole-trip tagging
-# --------------------------------------------------------------------------- #
-
-def _trip(n=4):
-    return {
-        "dateRange": "2026-09-12 ~ 2026-09-15",
-        "days": [
-            {"date": "09/%02d" % (12 + k),
-             "weather": {"icon": "sunny", "high": 88, "low": 60},
-             "stops": [{"name": "S%d" % k, "lat": 37.3, "lng": -113.0}]}
-            for k in range(n)
-        ],
-    }
-
-
-class TestRefreshTripWeather:
-    def test_forecast_days_tagged_climatology_days_tagged(self, monkeypatch):
-        # Forecast covers 09/12–09/13 only; climatology covers the rest.
-        monkeypatch.setattr(planner, "_weather_forecast", lambda lat, lng: {
-            "source": "open-meteo", "days": [
-                {"date": "2026-09-12", "icon": "rain", "high": 70, "low": 50},
-                {"date": "2026-09-13", "icon": "storm", "high": 68, "low": 48},
-            ]})
-        monkeypatch.setattr(planner, "_climatology",
-                            lambda lat, lng, iso: {"icon": "cloudy", "high": 75, "low": 55})
-        trip = _trip()
-        planner.refresh_trip_weather(trip)
-        assert trip["days"][0]["weather"]["source"] == "forecast"
-        assert trip["days"][0]["weather"]["icon"] == "rain"
-        assert trip["days"][0]["weather"]["asOf"] == "2026-09-12"
-        assert trip["days"][2]["weather"]["source"] == "climatology"
-        assert trip["days"][2]["weather"]["icon"] == "cloudy"
-
-    def test_all_offline_leaves_estimate_untagged(self, monkeypatch):
-        monkeypatch.setattr(planner, "_weather_forecast", lambda lat, lng: None)
-        monkeypatch.setattr(planner, "_climatology", lambda lat, lng, iso: None)
-        trip = _trip()
-        planner.refresh_trip_weather(trip)
-        assert trip["days"][0]["weather"] == {"icon": "sunny", "high": 88, "low": 60}
-        assert "source" not in trip["days"][0]["weather"]
-
-    def test_undated_trip_is_a_noop(self, monkeypatch):
-        monkeypatch.setattr(planner, "_weather_forecast",
-                            lambda lat, lng: (_ for _ in ()).throw(AssertionError("called")))
-        trip = {"days": [{"weather": {"icon": "sunny"}, "stops": [{"lat": 1, "lng": 1}]}]}
-        planner.refresh_trip_weather(trip)               # no dateRange -> no calls
-        assert trip["days"][0]["weather"] == {"icon": "sunny"}
-
-    def test_precip_and_wind_carried_onto_the_day(self, monkeypatch):
-        monkeypatch.setattr(planner, "_weather_forecast", lambda lat, lng: {
-            "source": "open-meteo", "days": [
-                {"date": "2026-09-12", "icon": "rain", "high": 70, "low": 50,
-                 "precipProb": 80, "windMph": 25, "summary": "Heavy rain"}]})
-        monkeypatch.setattr(planner, "_climatology", lambda lat, lng, iso: None)
-        trip = _trip(1)
-        planner.refresh_trip_weather(trip)
-        w = trip["days"][0]["weather"]
-        assert w["precipProb"] == 80 and w["windMph"] == 25 and w["summary"] == "Heavy rain"

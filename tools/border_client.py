@@ -105,7 +105,7 @@ def crossing(from_country, to_country, rental=False):
 
 
 def trip_section(crossings):
-    """Build the tripData crossBorder section from a list of (from,to,rental) tuples."""
+    """Build one checklist per crossing from (from, to, rental) tuples."""
     out = [crossing(*c) for c in crossings]
     return {"crossings": out,
             "summary": " · ".join("%s→%s" % (c["from"], c["to"]) for c in out

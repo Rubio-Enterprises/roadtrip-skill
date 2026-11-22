@@ -1,37 +1,9 @@
 #!/usr/bin/env python3
-"""
-server.py — MCP server for the RoadTrip Navigator skill.
-
-Exposes the skill's deterministic capabilities to ANY MCP host (Claude Code,
-Codex CLI, Gemini CLI, Cursor, ...) over stdio, or over Streamable HTTP when
-started with --http:
-
-  * the 11 data clients in tools/ as 13 typed tools (routing, weather, parks,
-    reservation countdown, EV charging, border/customs rules, fuel, lodging,
-    place-name validation),
-  * the deterministic renderer (assets/generate.py) as `render_trip`,
-  * the skill's planning knowledge as `get_planning_guide` — tool-shaped so it
-    reaches hosts that support neither MCP prompts nor Bash skills.
-
-This module is a thin adapter: every tool delegates to the existing client
-functions, which keep their CLI entry points and tests. No planning logic
-lives here.
-
-Failure contract (inherited from tools/web_search.fallback): when a live
-source is unavailable a tool returns {"source": "fallback", "searchQueries":
-[...], "suggestedSources": [...]} instead of raising — the calling agent
-should run those queries with its own web-search tool.
-
-Run directly:            python3 -m mcp_server.server
-Installed console script: roadtrip-mcp
-Over Streamable HTTP:     roadtrip-mcp --http --host 0.0.0.0 --allowed-host NAME
-                          (endpoint /mcp, liveness probe GET /health)
-"""
+"""RoadTrip Navigator data tools and planning guidance over stdio or Streamable HTTP."""
 
 import argparse
 import datetime
 import sys
-from importlib import util as _importlib_util
 from pathlib import Path
 from typing import Literal
 
@@ -42,18 +14,13 @@ from starlette.responses import JSONResponse
 # --------------------------------------------------------------------------- #
 # Layout resolution: repo checkout vs installed wheel
 # --------------------------------------------------------------------------- #
-# In a checkout, tools/ and assets/ are siblings of mcp_server/. In an
-# installed wheel they are vendored under mcp_server/_vendor/ with the same
-# relative layout (see pyproject.toml), so one _ROOT serves both cases.
-# Prefer _vendor whenever it exists (an install always has it) and anchor the
-# check on one of our own files — a bare `tools/` sibling is NOT evidence of a
-# checkout, since an unrelated site-packages `tools` package satisfies it.
+# A wheel vendors our clients. An unrelated site-packages/tools is not a checkout.
 _HERE = Path(__file__).resolve().parent
 _ANCHOR = ("tools", "border_client.py")
 _VENDOR = _HERE / "_vendor"
 _ROOT = _VENDOR if _VENDOR.joinpath(*_ANCHOR).is_file() else _HERE.parent
 if not _ROOT.joinpath(*_ANCHOR).is_file():
-    raise ImportError("roadtrip-mcp cannot locate the skill's tools/ from %s "
+    raise ImportError("roadtrip-mcp cannot locate its tools/ from %s "
                       "(broken install or moved checkout)" % _HERE)
 
 if str(_ROOT) not in sys.path:
@@ -74,48 +41,15 @@ from tools import (  # noqa: E402
 )
 
 
-def _load_renderer():
-    """Import assets/generate.py by path (assets/ is not a package)."""
-    spec = _importlib_util.spec_from_file_location(
-        "_roadtrip_generate", _ROOT / "assets" / "generate.py")
-    mod = _importlib_util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
-
-
-_generate = _load_renderer()
-
-
-def _read_doc(name):
-    return (_ROOT / name).read_text(encoding="utf-8")
-
-
-def _strip_frontmatter(md):
-    """Drop the YAML frontmatter block (--- ... ---) from a skill doc."""
-    if md.startswith("---"):
-        end = md.find("\n---", 3)
-        if end != -1:
-            return md[end + 4:].lstrip("\n")
-    return md
-
-
 _FALLBACK_NOTE = ("If the result has source:'fallback', the live source was "
                   "unavailable — run its searchQueries with your own web-search "
                   "tool instead of treating the call as failed.")
 
-# NOTE(v2 hook): when a connected client advertises the `sampling` capability
-# (or a server-side model key is configured), a high-level `plan_trip` tool can
-# be registered alongside the data tools below — data gathering + validation
-# stay code-owned, generation is delegated back to the host model. Deliberately
-# out of v1 scope: Codex/Gemini do not support sampling today.
 mcp = FastMCP(
     "roadtrip-navigator",
     instructions=(
-        "Deterministic data tools and the itinerary renderer of the RoadTrip "
-        "Navigator skill (North American road trips). Before planning a full "
-        "multi-day trip, call get_planning_guide(topic='workflow') for the "
-        "planning rules and get_planning_guide(topic='schema') for the tripData "
-        "contract that render_trip expects. Validate every user-supplied place "
+        "Road-trip data tools for North America. Before planning a multi-day trip, "
+        "call get_planning_guide for the workflow. Validate every user-supplied place "
         "name with validate_place before routing around it. " + _FALLBACK_NOTE),
 )
 
@@ -412,137 +346,38 @@ def lodging_quote(place: str, checkin: str = "", checkout: str = "",
 
 
 # --------------------------------------------------------------------------- #
-# Renderer
+# Planning guidance
 # --------------------------------------------------------------------------- #
-@mcp.tool()
-def render_trip(trip_data: dict, output_path: str = "trip.html") -> dict:
-    """Render a tripData JSON object into the skill's map-first, single-file,
-    offline-friendly HTML itinerary page.
-
-    Writes the page to output_path (relative paths resolve against the server's
-    working directory) and returns {path, sizeKB, days, warnings} — the HTML
-    itself is deliberately NOT returned (tens to hundreds of KB would flood the
-    conversation context). Get the
-    tripData contract from get_planning_guide(topic='schema') first; warnings
-    list schema gaps (missing coords, budget mismatch, ...) without failing.
-
-    A server reached over HTTP cannot hand you a file: there this returns an
-    error, and you render with the skill's own script instead
-    (python3 assets/generate.py tripData.json -o trip.html).
-    """
-    if _SERVING_HTTP:
-        return {"source": "error", "reason": _REMOTE_RENDER}
-    out = Path(output_path).expanduser().resolve()
-    if out.suffix.lower() not in (".html", ".htm"):
-        return {"source": "error",
-                "reason": "output_path must end in .html or .htm, got %r" % output_path}
-    if not out.parent.is_dir():
-        return {"source": "error",
-                "reason": "parent directory does not exist: %s" % out.parent}
-    template = (_ROOT / "assets" / "template.html").read_text(encoding="utf-8")
-    warnings = _generate.validate(trip_data)
-    html = _generate.build_html(trip_data, template)
-    _generate.syntax_check(html)
-    out.write_text(html, encoding="utf-8")
-    return {
-        "path": str(out),
-        "sizeKB": len(html) // 1024,
-        "days": len(trip_data.get("days", []) or []),
-        "warnings": warnings,
-    }
-
-
-# --------------------------------------------------------------------------- #
-# Planning knowledge
-# --------------------------------------------------------------------------- #
-_TOOLS_GUIDE = """\
-How to use the roadtrip-navigator MCP tools when planning a trip:
-
-1. validate_place — every user-supplied place name, BEFORE routing around it.
-2. route — real miles/drive-time between consecutive stops; slice the trip into
-   days under a sane daily drive limit (see the workflow guide).
-3. weather_forecast (departing within ~2 weeks) or weather_climatology
-   (further out) — per overnight stop.
-4. park_info + reservation_countdown — for every national park on the route;
-   turn release windows into 'book by' deadlines.
-5. ev_corridor (+ chargers_near for gaps) — whenever the vehicle is an EV.
-6. border_crossing + customs_exemption — whenever the route crosses
-   US/CA/MX borders.
-7. fuel_cost + lodging_quote — budget lines, graded estimate/reference.
-8. render_trip — final step: turn the assembled tripData JSON (contract:
-   get_planning_guide(topic='schema')) into the single-file HTML page. Only a
-   server on your own machine can write that page. A server reached over HTTP
-   answers with an error: render with the skill's own script instead,
-   python3 assets/generate.py tripData.json -o trip.html
-
-Failure contract: any tool may return {"source": "fallback", "searchQueries":
-[...], "suggestedSources": [...]} when its live source is unreachable. Run the
-queries with your own web-search tool and grade the answer accordingly
-(verified / reference / estimate).
-
-Optional server-side env keys: TOMTOM_API_KEY (route: without it drive times
-come from OSRM and run about 19-34% long), GOOGLE_ROUTES_API_KEY (route_legs:
-without it the tool returns an error), NPS_API_KEY (park_info), OCM_API_KEY
-(chargers_near reliability). Everything else needs no key.
-"""
-
-
-@mcp.tool()
-def get_planning_guide(topic: Literal["workflow", "schema", "tools"] = "workflow") -> str:
-    """The skill's planning knowledge, tool-shaped so it works in every host.
-
-    topic='workflow': the full RoadTrip Navigator planning method (daily-drive
-    segmentation, overnight logic, reservation lead times, seasonal closures,
-    honesty grading) — read this before planning a multi-day trip.
-    topic='schema': the tripData JSON contract render_trip expects, plus
-    reliability grading and the tool routing table.
-    topic='tools': recommended call order for THESE MCP tools + the fallback
-    contract.
-    """
-    if topic == "workflow":
-        return _strip_frontmatter(_read_doc("SKILL.md"))
-    if topic == "schema":
-        return _read_doc("reference.md")
-    return _TOOLS_GUIDE
-
-
-# The same knowledge, also exposed via the standard MCP primitives for hosts
-# that support them (e.g. Gemini CLI surfaces prompts as slash commands). The
-# get_planning_guide TOOL above stays the lowest-common-denominator path.
 @mcp.resource("roadtrip://skill.md")
 def skill_doc() -> str:
-    """The RoadTrip Navigator planning workflow (SKILL.md, frontmatter stripped)."""
-    return _strip_frontmatter(_read_doc("SKILL.md"))
+    """Planning workflow for a North American road trip."""
+    return (_HERE / "workflow.md").read_text(encoding="utf-8")
 
 
 @mcp.resource("roadtrip://reference.md")
 def reference_doc() -> str:
-    """tripData schema, reliability grading, and tool-routing reference."""
-    return _read_doc("reference.md")
+    """Tool call order, search sources and fallback handling."""
+    return (_HERE / "tool-guide.md").read_text(encoding="utf-8")
+
+
+@mcp.tool()
+def get_planning_guide(topic: Literal["workflow", "tools"] = "workflow") -> str:
+    """Read the workflow before planning a multi-day drive. Use topic='tools'
+    for the recommended data tools, search sources and fallback contract.
+    """
+    return skill_doc() if topic == "workflow" else reference_doc()
 
 
 @mcp.prompt()
 def plan_road_trip(request: str = "") -> str:
     """Plan a North American road trip with the RoadTrip Navigator method."""
-    return (_strip_frontmatter(_read_doc("SKILL.md"))
-            + "\n\n---\n\nPlan the following trip with the workflow above, using "
-              "the roadtrip-navigator MCP tools for every live figure "
-              "(get_planning_guide(topic='tools') lists the call order):\n\n"
-            + (request or "(ask the user for start, destination/region, days, "
-                          "party, and vehicle)"))
+    return (skill_doc() + "\n\nUse get_planning_guide(topic='tools') for data sources."
+            + "\n\nTrip request: " + (request or "Ask for the missing trip requirements."))
 
 
 # --------------------------------------------------------------------------- #
 # Transports
 # --------------------------------------------------------------------------- #
-# True once main() serves HTTP: the caller is then on another machine, and a
-# page render_trip wrote here would never reach it.
-_SERVING_HTTP = False
-_REMOTE_RENDER = ("this roadtrip-navigator server is remote, so a page written "
-                  "here would not reach you. Render it where the skill is "
-                  "installed: python3 assets/generate.py tripData.json -o trip.html")
-
-
 @mcp.custom_route("/health", methods=["GET"])
 async def health(request):
     """Liveness probe for an orchestrator. Answers whatever the Host header."""
@@ -584,8 +419,6 @@ def main(argv=None):
         mcp.run()
         return
 
-    global _SERVING_HTTP
-    _SERVING_HTTP = True
     mcp.settings.host = args.host or "127.0.0.1"
     mcp.settings.port = args.port or 8000
     mcp.settings.stateless_http = True

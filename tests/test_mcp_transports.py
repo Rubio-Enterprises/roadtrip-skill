@@ -17,7 +17,7 @@ from urllib.request import Request, urlopen
 import pytest
 
 pytest.importorskip(
-    "mcp", reason="mcp SDK not installed — pip install -e '.[dev]' to run these")
+    "mcp", reason="mcp SDK not installed; run the dev suite described in DEVELOPMENT.md")
 
 from mcp import ClientSession, StdioServerParameters  # noqa: E402
 from mcp.client.stdio import stdio_client  # noqa: E402
@@ -31,9 +31,6 @@ from tools import customs_client  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 SERVER = [sys.executable, "-m", "mcp_server.server"]
-TRIP = {"title": "Test trip", "disclaimer": "Check before you go.",
-        "days": [{"date": "09/12", "title": "Day 1",
-                  "stops": [{"name": "Zion", "lat": 37.2982, "lng": -113.0263}]}]}
 
 
 def server_env():
@@ -87,8 +84,8 @@ def tool_payload(result):
 
 
 class HttpServer:
-    def __init__(self, base, cwd):
-        self.base, self.cwd = base, cwd
+    def __init__(self, base):
+        self.base = base
         self.mcp = base + "/mcp"
 
     def session(self, calls):
@@ -122,7 +119,7 @@ def server(tmp_path_factory):
             assert proc.poll() is None, "server exited with %s" % proc.returncode
             assert time.time() < deadline, "server did not answer /health within 30s"
             time.sleep(0.1)
-        yield HttpServer(base, cwd)
+        yield HttpServer(base)
     finally:
         proc.terminate()
         proc.wait(timeout=10)
@@ -137,7 +134,7 @@ class TestStreamableHttp:
             return [t.name for t in tools.tools], tool_payload(result)
 
         names, exemption = server.session(calls)
-        assert len(names) == 15 and "route" in names
+        assert len(names) == 14 and "route_legs" in names
         assert exemption == json.loads(json.dumps(
             customs_client.personal_exemption("US", 72, False)))
 
@@ -171,16 +168,6 @@ class TestStreamableHttp:
     def test_refuses_any_other_host(self, server, host):
         assert http(server.mcp, host=host, body=INITIALIZE)[0] == 421
 
-    def test_render_trip_refuses_and_writes_nothing(self, server):
-        async def calls(session):
-            return tool_payload(await session.call_tool(
-                "render_trip", {"trip_data": TRIP, "output_path": "trip.html"}))
-
-        out = server.session(calls)
-        assert out["source"] == "error"
-        assert "python3 assets/generate.py tripData.json -o trip.html" in out["reason"]
-        assert list(server.cwd.iterdir()) == []
-
 
 class TestHealth:
     def test_answers_ok(self, server):
@@ -193,7 +180,7 @@ class TestHealth:
 
 
 class TestStdioIsStillTheDefault:
-    def test_no_arguments_serves_stdio_and_renders_locally(self, tmp_path):
+    def test_no_arguments_serves_stdio(self, tmp_path):
         async def run():
             params = StdioServerParameters(command=SERVER[0], args=SERVER[1:],
                                            env=server_env(), cwd=str(tmp_path))
@@ -201,12 +188,9 @@ class TestStdioIsStillTheDefault:
                 async with ClientSession(read, write) as session:
                     await session.initialize()
                     return tool_payload(await session.call_tool(
-                        "render_trip", {"trip_data": TRIP, "output_path": "trip.html"}))
+                        "fuel_cost", {"miles": 100, "mpg": 25, "price_per_gal": 5}))
 
-        out = asyncio.run(run())
-        assert out["days"] == 1
-        assert Path(out["path"]) == (tmp_path / "trip.html").resolve()
-        assert "Test trip" in (tmp_path / "trip.html").read_text(encoding="utf-8")
+        assert asyncio.run(run())["cost"] == 20.0
 
     @pytest.mark.parametrize("flags", [["--port", "9000"], ["--host", "0.0.0.0"],
                                        ["--allowed-host", "gateway.test"]])

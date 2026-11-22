@@ -2,7 +2,7 @@
 """
 web_search.py — the universal fallback.
 
-This skill runs inside an agent that already has a real web-search capability.
+The calling agent supplies its own web-search capability.
 These clients are *not* meant to replace it; they reach official/free APIs when
 possible and otherwise hand back a structured "search this" instruction that the
 agent should execute with its own search tool.

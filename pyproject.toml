@@ -4,15 +4,15 @@ build-backend = "hatchling.build"
 
 [project]
 name = "roadtrip-navigator-mcp"
-version = "0.1.0"
-description = "MCP server exposing the RoadTrip Navigator skill's data tools and itinerary renderer to any MCP host (Claude Code, Codex CLI, Gemini CLI, ...)"
+version = "0.2.0"
+description = "Road-trip data tools and planning guidance for MCP hosts"
 readme = "mcp_server/README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
 dependencies = ["mcp>=1.23.0,<2"]
 
 [project.urls]
-Homepage = "https://github.com/Waybox-AI/roadtrip-skill"
+Homepage = "https://github.com/Rubio-Enterprises/roadtrip-skill"
 
 [project.scripts]
 roadtrip-mcp = "mcp_server.server:main"
@@ -20,11 +20,6 @@ roadtrip-mcp = "mcp_server.server:main"
 [project.optional-dependencies]
 dev = ["pytest"]
 
-# The repo is a skill first and a Python package second: only mcp_server/ is a
-# real package. Everything else the server needs at runtime (tools/, the
-# renderer, the skill docs) is vendored into mcp_server/_vendor/ at build time
-# so an installed wheel mirrors the repo-checkout layout the code resolves
-# against (see mcp_server/server.py `_ROOT`).
 [tool.hatch.build.targets.wheel]
 packages = ["mcp_server"]
 
@@ -42,7 +37,3 @@ packages = ["mcp_server"]
 "tools/routing_client.py" = "mcp_server/_vendor/tools/routing_client.py"
 "tools/weather_client.py" = "mcp_server/_vendor/tools/weather_client.py"
 "tools/web_search.py" = "mcp_server/_vendor/tools/web_search.py"
-"assets/generate.py" = "mcp_server/_vendor/assets/generate.py"
-"assets/template.html" = "mcp_server/_vendor/assets/template.html"
-"SKILL.md" = "mcp_server/_vendor/SKILL.md"
-"reference.md" = "mcp_server/_vendor/reference.md"

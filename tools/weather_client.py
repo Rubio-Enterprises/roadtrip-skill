@@ -12,7 +12,7 @@ Seasonal fallback (beyond any forecast window):
 
 forecast() returns {source, units, days:[{date, icon, high, low, summary,
 precipProb?, windMph?}]}; on total failure, a web-search `fallback(...)` dict.
-Icons map to the renderer's set: sunny|partly-cloudy|cloudy|rain|snow|storm|
+Condition icons: sunny|partly-cloudy|cloudy|rain|snow|storm|
 windy|fog.
 
 CLI:
@@ -33,7 +33,7 @@ except ImportError:
 
 UA = {"User-Agent": "roadtrip-navigator/1.0 (itinerary skill)"}
 
-# WMO weather codes (Open-Meteo `weather_code`) -> the renderer's icon set.
+# WMO weather codes (Open-Meteo `weather_code`) -> condition icon.
 # https://open-meteo.com/en/docs — codes grouped by phenomenon.
 _WMO_ICON = {
     0: "sunny", 1: "sunny", 2: "partly-cloudy", 3: "cloudy",

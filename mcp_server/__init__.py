@@ -1,1 +1,1 @@
-"""MCP server for the RoadTrip Navigator skill (see server.py)."""
+"""RoadTrip Navigator MCP server."""

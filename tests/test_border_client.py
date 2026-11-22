@@ -30,8 +30,6 @@ class TestCrossingIntoCanada:
 
 class TestCrossingIntoMexico:
     def test_insurance_is_the_critical_asymmetry(self):
-        # US insurance works in Canada but NEVER in Mexico — the key rule
-        # SKILL.md calls out; a regression here is a real-money mistake.
         assert "NOT valid" in crossing("US", "MX")["insuranceNote"]
 
     def test_fmm_and_tip_requirements(self):
