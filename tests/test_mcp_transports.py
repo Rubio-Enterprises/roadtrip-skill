@@ -137,7 +137,7 @@ class TestStreamableHttp:
             return [t.name for t in tools.tools], tool_payload(result)
 
         names, exemption = server.session(calls)
-        assert len(names) == 14 and "route" in names
+        assert len(names) == 15 and "route" in names
         assert exemption == json.loads(json.dumps(
             customs_client.personal_exemption("US", 72, False)))
 

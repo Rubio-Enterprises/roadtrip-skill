@@ -18,7 +18,7 @@ pytest.importorskip(
 from mcp_server import server as srv  # noqa: E402
 
 EXPECTED_TOOLS = {
-    "validate_place", "route", "weather_forecast", "weather_climatology",
+    "validate_place", "route", "route_legs", "weather_forecast", "weather_climatology",
     "park_info", "reservation_countdown", "chargers_near", "ev_corridor",
     "border_crossing", "customs_exemption", "fuel_cost", "lodging_quote",
     "render_trip", "get_planning_guide",
@@ -50,6 +50,7 @@ class TestRegistry:
 
     @pytest.mark.parametrize("tool,required", [
         ("route", "waypoints"),
+        ("route_legs", "waypoints"),
         ("ev_corridor", "legs"),
         ("ev_corridor", "usable_range_miles"),
         ("border_crossing", "crossings"),
@@ -105,6 +106,28 @@ class TestDelegation:
         out = call("route", {"waypoints": [[35.0841, -106.65099], [36.16743, -115.14841]]})
         assert out == {"source": "tomtom", "miles": 577.5, "driveTime": "8h04m", "hours": 8.07}
         assert net.hosts() == ["api.tomtom.com"]
+
+    def test_route_legs_passes_options_and_tuples_through(self, monkeypatch):
+        seen = {}
+
+        def fake_legs(pts, **options):
+            seen.update(pts=pts, **options)
+            return {"source": "google", "legs": []}
+
+        monkeypatch.setattr(srv.google_routes, "route_legs", fake_legs)
+        out = call("route_legs", {"waypoints": [[35.19, -111.65], [35.25, -112.19]],
+                                  "traffic": "live", "max_intermediates": 25})
+        assert out["source"] == "google"
+        assert seen == {"pts": [(35.19, -111.65), (35.25, -112.19)], "traffic": "live",
+                        "depart_at": None, "path_tolerance_m": 10.0, "max_intermediates": 25}
+
+    def test_route_legs_without_a_server_key_says_so(self, monkeypatch):
+        monkeypatch.delenv("GOOGLE_ROUTES_API_KEY", raising=False)
+        out = call("route_legs", {"waypoints": [[35.19, -111.65], [35.25, -112.19]]})
+        assert out == {"source": "error", "reason": "the server has no GOOGLE_ROUTES_API_KEY"}
+
+    def test_route_legs_rejects_malformed_waypoint(self):
+        assert call("route_legs", {"waypoints": [[35.19]]})["source"] == "error"
 
     def test_route_rejects_malformed_waypoint(self):
         out = call("route", {"waypoints": [[36.17]]})

@@ -21,13 +21,18 @@ class _Response:
 class FakeNetwork:
     """`answers` maps a URL substring to a JSON payload, an exception to raise,
     or a function of the URL returning either. Every URL asked for is kept in
-    `urls`; a URL with no answer fails like an unreachable host."""
+    `urls`, and every urllib Request in `requests`; a URL with no answer fails
+    like an unreachable host."""
 
     def __init__(self, answers):
         self.answers = answers
         self.urls = []
+        self.requests = []
 
     def __call__(self, url, timeout=None):
+        if not isinstance(url, str):  # a urllib Request: a POST or one with headers
+            self.requests.append(url)
+            url = url.full_url
         self.urls.append(url)
         for needle, answer in self.answers.items():
             if needle in url:

@@ -6,11 +6,11 @@ served over the [Model Context Protocol](https://modelcontextprotocol.io) so
 VS Code, … — can call them as typed tools. No shell access, Python setup, or
 repo checkout required on the agent's side.
 
-14 tools in three groups:
+15 tools in three groups:
 
 | Group | Tools |
 |---|---|
-| Live data & rules | `validate_place` · `route` · `weather_forecast` · `weather_climatology` · `park_info` · `reservation_countdown` · `chargers_near` · `ev_corridor` · `border_crossing` · `customs_exemption` · `fuel_cost` · `lodging_quote` |
+| Live data & rules | `validate_place` · `route` · `route_legs` · `weather_forecast` · `weather_climatology` · `park_info` · `reservation_countdown` · `chargers_near` · `ev_corridor` · `border_crossing` · `customs_exemption` · `fuel_cost` · `lodging_quote` |
 | Renderer | `render_trip` — tripData JSON → the skill's single-file HTML itinerary page |
 | Knowledge | `get_planning_guide` — the skill's workflow / tripData schema / tool-usage guide, tool-shaped so it reaches hosts without skill support (also registered as the `plan_road_trip` MCP prompt and the `roadtrip://skill.md` / `roadtrip://reference.md` resources for hosts that support those primitives) |
 
@@ -69,11 +69,12 @@ is installed, with `python3 assets/generate.py tripData.json -o trip.html`.
 
 ### Optional API keys (server-side env)
 
-Everything works without keys; three tools get better with them:
+Everything but `route_legs` works without keys; these tools get better with them:
 
 | Env var | Tool | Without it |
 |---|---|---|
 | `TOMTOM_API_KEY` ([free tier](https://developer.tomtom.com/)) | `route` | OSRM public server: right miles, drive times about 19–34% long |
+| `GOOGLE_ROUTES_API_KEY` ([Routes API](https://developers.google.com/maps/documentation/routes), billed per request with a free monthly allowance) | `route_legs` | the tool returns an error: no other engine gives Google's choice of road |
 | `NPS_API_KEY` ([free](https://www.nps.gov/subjects/developer/)) | `park_info` | web-search fallback |
 | `OCM_API_KEY` ([free](https://openchargemap.org/site/developerinfo)) | `chargers_near` | demo quota, may throttle |
 

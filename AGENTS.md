@@ -20,7 +20,9 @@ human. For product/domain background see [CONTEXT.md](CONTEXT.md).
   auto-skips when `mcp` is absent so the stdlib+pytest baseline stays green.
 - **Zero required API keys.** Everything must run and test with no keys and no network.
   Keys (`NPS_API_KEY`, `OCM_API_KEY`, `OPENWEATHER_API_KEY`, `TOMTOM_API_KEY`) are
-  read from env vars only and are strictly optional upgrades.
+  read from env vars only and are strictly optional upgrades. The one exception is
+  `GOOGLE_ROUTES_API_KEY`: `tools/google_routes.py` has no other engine behind it,
+  so without the key it answers with an error. The planning workflow never needs it.
 - Use `python3` (there is no `python` on the standard dev machine).
 
 ## Commands

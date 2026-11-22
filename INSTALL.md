@@ -49,6 +49,7 @@ fallback rather than failing.
 | `OCM_API_KEY` | `tools/charging_client.py` | https://openchargemap.org/site/develop/api | free |
 | `OPENWEATHER_API_KEY` | `tools/weather_client.py` (fallback) | https://openweathermap.org/api | free tier |
 | `TOMTOM_API_KEY` | `tools/routing_client.py` (accurate drive times) | https://developer.tomtom.com/ | free tier |
+| `GOOGLE_ROUTES_API_KEY` | `tools/google_routes.py` (which road Google takes, leg by leg) | https://developers.google.com/maps/documentation/routes | billed per request, free monthly allowance |
 
 No key needed for: **NWS** weather (`api.weather.gov`, US), **OSRM** routing
 (public demo; used when `TOMTOM_API_KEY` is unset, and its drive times run about
@@ -99,6 +100,7 @@ roadtrip-navigator/
 │   └── helper.py            parsing, mode/region detection, compare_routes()
 └── tools/                   per-source clients (each with a web-search fallback)
     ├── web_search.py        universal fallback payload builder
+    ├── google_routes.py     Google Routes API: each leg's distance, time and path (needs a key)
     ├── routing_client.py    TomTom (with key) or OSRM route distance/time + haversine fallback
     ├── parks_client.py      NPS API + reservation countdown
     ├── weather_client.py    NWS forecast by lat/lng

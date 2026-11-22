@@ -6,7 +6,7 @@ Exposes the skill's deterministic capabilities to ANY MCP host (Claude Code,
 Codex CLI, Gemini CLI, Cursor, ...) over stdio, or over Streamable HTTP when
 started with --http:
 
-  * the 10 data clients in tools/ as 12 typed tools (routing, weather, parks,
+  * the 11 data clients in tools/ as 13 typed tools (routing, weather, parks,
     reservation countdown, EV charging, border/customs rules, fuel, lodging,
     place-name validation),
   * the deterministic renderer (assets/generate.py) as `render_trip`,
@@ -64,6 +64,7 @@ from tools import (  # noqa: E402
     charging_client,
     customs_client,
     fuel_client,
+    google_routes,
     lodging_client,
     parks_client,
     places_client,
@@ -162,6 +163,45 @@ def route(waypoints: list[list[float]]) -> dict:
                     "reason": "each waypoint must be [lat, lng], got: %r" % (w,)}
         pts.append((float(w[0]), float(w[1])))
     return routing_client.route(pts)
+
+
+@mcp.tool()
+def route_legs(waypoints: list[list[float]],
+               traffic: Literal["none", "live"] = "none",
+               depart_at: str = "",
+               path_tolerance_m: float = 10.0,
+               max_intermediates: int = 10) -> dict:
+    """Which road Google takes between stops: each leg's metres, seconds and
+    path from Google's Routes API, the engine behind the Google Maps app.
+
+    waypoints: ordered [[lat, lng], ...], a stop at each. Returns {source:
+    'google', traffic, requests, tier, meters, seconds, legs: [{meters,
+    seconds, path: [[lat, lng], ...]}]}, one leg per pair of neighbours. Use
+    it to check that a route follows a chosen road (compare each path with the
+    road's line), or for Google's own drive times.
+
+    traffic='none' gives Google's typical time with no live traffic, and is
+    the mode to check roads with. traffic='live' is the app's own mode:
+    today's traffic, or the forecast for depart_at (RFC 3339, in the future).
+    path_tolerance_m thins each path (0 keeps every point; a long leg is
+    thousands of points). Google bills per request: one request carries
+    max_intermediates + 1 legs, and more than 10, or traffic='live', is billed
+    at the Pro rate. Read `requests` and `tier` in the answer.
+
+    There is no other engine behind this tool. Without GOOGLE_ROUTES_API_KEY
+    on the server, or when Google refuses, it returns {source: 'error',
+    reason}: use `route` for a drive time, and say the road was not checked.
+    Like `route`, it does not know a road closed for the season.
+    """
+    pts = []
+    for w in waypoints:
+        if not isinstance(w, (list, tuple)) or len(w) < 2:
+            return {"source": "error",
+                    "reason": "each waypoint must be [lat, lng], got: %r" % (w,)}
+        pts.append((float(w[0]), float(w[1])))
+    return google_routes.route_legs(
+        pts, traffic=traffic, depart_at=depart_at or None,
+        path_tolerance_m=path_tolerance_m, max_intermediates=max_intermediates)
 
 
 # --------------------------------------------------------------------------- #
@@ -436,7 +476,8 @@ queries with your own web-search tool and grade the answer accordingly
 (verified / reference / estimate).
 
 Optional server-side env keys: TOMTOM_API_KEY (route: without it drive times
-come from OSRM and run about 19-34% long), NPS_API_KEY (park_info), OCM_API_KEY
+come from OSRM and run about 19-34% long), GOOGLE_ROUTES_API_KEY (route_legs:
+without it the tool returns an error), NPS_API_KEY (park_info), OCM_API_KEY
 (chargers_near reliability). Everything else needs no key.
 """
 
