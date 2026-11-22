@@ -175,10 +175,15 @@ def route_legs(waypoints: list[list[float]],
     path from Google's Routes API, the engine behind the Google Maps app.
 
     waypoints: ordered [[lat, lng], ...], a stop at each. Returns {source:
-    'google', traffic, requests, tier, meters, seconds, legs: [{meters,
-    seconds, path: [[lat, lng], ...]}]}, one leg per pair of neighbours. Use
-    it to check that a route follows a chosen road (compare each path with the
-    road's line), or for Google's own drive times.
+    'google', traffic, requests, tier, meters, seconds, warnings, legs:
+    [{meters, seconds, path: [[lat, lng], ...]}]}, one leg per pair of
+    neighbours. Use it to check that a route follows a chosen road (compare
+    each path with the road's line), or for Google's own drive times.
+
+    warnings is the list of alerts Google attaches to the route, in its own
+    words and each given once (tolls, private or restricted roads). Google
+    does not say which leg a warning is about: to find it, ask again for part
+    of the route. An empty list means Google attached none.
 
     traffic='none' gives Google's typical time with no live traffic, and is
     the mode to check roads with. traffic='live' is the app's own mode:
