@@ -21,8 +21,11 @@ FOURTH_ST_LEG = {"distanceMeters": 467, "duration": "85s", "staticDuration": "85
                  "polyline": {"encodedPolyline": "iceuEfa}iSTB`Ed@h@F|BVXDt@HxBTNBxANjBTBc@"}}
 
 
-def answer_for(request_legs):
-    return {"routes": [{"legs": request_legs}]}
+def answer_for(request_legs, warnings=None):
+    route = {"legs": request_legs}
+    if warnings is not None:
+        route["warnings"] = warnings
+    return {"routes": [route]}
 
 
 @pytest.fixture
@@ -122,6 +125,34 @@ class TestRouteLegs:
         thin = route_legs(SANTA_FE, path_tolerance_m=10)["legs"][0]["path"]
         assert full[0] == thin[0] and full[-1] == thin[-1]
         assert len(thin) < len(full)
+
+
+class TestRouteWarnings:
+    PRIVATE = "This route has restricted usage or private roads."
+    TOLLS = "This route has tolls."
+
+    def test_asks_google_for_the_warnings_on_the_route(self, google):
+        route_legs(SANTA_FE)
+        assert "routes.warnings" in google.requests[0].get_header("X-goog-fieldmask").split(",")
+
+    def test_a_route_google_warns_about_carries_the_warning(self, google):
+        google.answers["routes.googleapis.com"] = answer_for([SANTA_FE_LEG], [self.PRIVATE])
+        assert route_legs(SANTA_FE)["warnings"] == [self.PRIVATE]
+
+    def test_a_route_with_no_warning_has_an_empty_list(self, google):
+        assert route_legs(SANTA_FE)["warnings"] == []
+
+    def test_each_warning_is_given_once_across_requests_in_the_order_met(self, google):
+        answers = iter([[self.TOLLS], [self.TOLLS, self.PRIVATE], []])
+
+        def answer(url):
+            body = json.loads(google.requests[-1].data.decode())
+            return answer_for([SANTA_FE_LEG] * (len(body["intermediates"]) + 1), next(answers))
+
+        google.answers["routes.googleapis.com"] = answer
+        out = route_legs([(35.0 + i / 100.0, -106.0) for i in range(26)])
+        assert out["requests"] == 3
+        assert out["warnings"] == [self.TOLLS, self.PRIVATE]
 
 
 class TestRouteLegsRefusals:

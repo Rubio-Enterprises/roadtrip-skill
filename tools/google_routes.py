@@ -5,7 +5,8 @@ google_routes.py — what Google routes between a list of stops, leg by leg.
 Asks Google's Routes API (computeRoutes) for the driving route through the
 waypoints as stops and returns each leg's metres, seconds and path. The path
 is what `route` cannot give: it shows which road each leg takes, so a caller
-can check that a route stays on a chosen road.
+can check that a route stays on a chosen road. The answer also carries the
+warnings Google attaches to the route (tolls, private roads and the like).
 
 Needs GOOGLE_ROUTES_API_KEY in the environment. Without it, or when Google
 refuses, the answer is {"source": "error", "reason": ...}: there is no other
@@ -26,8 +27,8 @@ import sys
 from urllib.request import Request, urlopen
 
 URL = "https://routes.googleapis.com/directions/v2:computeRoutes"
-FIELDS = ",".join("routes.legs." + f for f in (
-    "distanceMeters", "duration", "staticDuration", "polyline.encodedPolyline"))
+FIELDS = ",".join(["routes.warnings"] + ["routes.legs." + f for f in (
+    "distanceMeters", "duration", "staticDuration", "polyline.encodedPolyline")])
 MAX_INTERMEDIATES = 25      # Google's limit per request
 ESSENTIALS_INTERMEDIATES = 10
 TRAFFIC = {"none": "TRAFFIC_UNAWARE", "live": "TRAFFIC_AWARE_OPTIMAL"}
@@ -125,7 +126,7 @@ def _ask(points, key, preference, depart_at, timeout):
     legs = routes[0].get("legs") or []
     if len(legs) != len(points) - 1:
         raise ValueError("Google returned %d legs for %d stops" % (len(legs), len(points)))
-    return legs
+    return legs, routes[0].get("warnings") or []
 
 
 def _failure(error, key):
@@ -147,8 +148,10 @@ def route_legs(waypoints, traffic="none", depart_at=None, path_tolerance_m=10.0,
     """waypoints: list of (lat, lng), driven in order with a stop at each.
 
     Returns {"source": "google", "traffic", "requests", "tier", "meters",
-    "seconds", "legs": [{"meters", "seconds", "path": [[lat, lng], ...]}]},
-    one leg per pair of neighbouring waypoints. "seconds" follows `traffic`:
+    "seconds", "warnings": [text, ...], "legs": [{"meters", "seconds",
+    "path": [[lat, lng], ...]}]}, one leg per pair of neighbouring waypoints.
+    "warnings" is Google's own wording, each given once; Google does not say
+    which leg a warning is about. "seconds" follows `traffic`:
     "none" is Google's typical time with no live traffic, "live" is the app's
     own mode (today's traffic, or the forecast for depart_at, an RFC 3339 time
     in the future). path_tolerance_m thins each path; 0 keeps every point.
@@ -164,15 +167,16 @@ def route_legs(waypoints, traffic="none", depart_at=None, path_tolerance_m=10.0,
         return {"source": "error", "reason": "the server has no GOOGLE_ROUTES_API_KEY"}
 
     per_request = max(0, min(int(max_intermediates), MAX_INTERMEDIATES)) + 1
-    legs, requests = [], 0
+    legs, warnings, requests = [], [], 0
     for start in range(0, len(waypoints) - 1, per_request):
         points = waypoints[start:start + per_request + 1]
         try:
-            answer = _ask(points, key, TRAFFIC[traffic], depart_at, timeout)
+            answer, warned = _ask(points, key, TRAFFIC[traffic], depart_at, timeout)
         except Exception as error:  # bad key / quota / network blocked / no route
             return {"source": "error", "requests": requests,
                     "reason": "Google unavailable: %s" % _failure(error, key)}
         requests += 1
+        warnings += [text for text in warned if text not in warnings]
         for leg in answer:
             encoded = (leg.get("polyline") or {}).get("encodedPolyline") or ""
             legs.append({
@@ -188,6 +192,7 @@ def route_legs(waypoints, traffic="none", depart_at=None, path_tolerance_m=10.0,
         "tier": "pro" if pro else "essentials",
         "meters": sum(leg["meters"] for leg in legs),
         "seconds": sum(leg["seconds"] for leg in legs),
+        "warnings": warnings,
         "legs": legs,
     }
 
