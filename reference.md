@@ -23,11 +23,11 @@ missing.
   "totalMiles": 1180,
   "drivingDays": 7,
   "region": "desert",              // theming: desert|coast|forest|autumn|mountain
-  "units": { "distance": "mi", "temp": "F", "currency": "USD" },  // currency = the trip country's code: USD|CAD|MXN|CNY
+  "units": { "distance": "mi", "temp": "F", "currency": "USD" },  // currency = the trip country's code, e.g. USD or GBP
 
   "days": [                        // required, ordered
     {
-      "date": "09/12",             // required
+      "date": "09/12",             // required; MM/DD = September 12 (ISO YYYY-MM-DD also accepted)
       "title": "Las Vegas → Zion", // required
       "from": "Las Vegas, NV",
       "to": "Springdale, UT",
@@ -172,8 +172,12 @@ result straight into `tripData.json`.
 - `region` picks the color theme. `vehicle.type` picks 🚗/🔌/🚐.
 - Budget rows show a colored reliability badge; the footer total is the source
   of truth (generator warns if `total` ≠ sum of items).
-- `budget.currency` / `units.currency` map to symbols: USD `$`, CAD `C$`,
-  MXN `MX$`, CNY/RMB `¥`; unknown codes fall back to `$`.
+- Prices use `budget.currency`, then `units.currency` (default USD). A booking
+  can override this with `price.currency`. Symbols include `$`, `C$`, `MX$`,
+  `¥` (CNY/RMB), `£` (GBP) and `€` (EUR); unknown codes print before the
+  amount (e.g. `ZZZ 25`). No conversion is performed.
+- Itinerary dates use a named month for `MM/DD` (`09/12` → `12 Sep`, or
+  `9月12日` in Chinese). ISO dates retain their year; no weekday is inferred.
 
 ## 2. Reliability grading
 

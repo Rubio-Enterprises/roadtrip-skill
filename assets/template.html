@@ -307,7 +307,6 @@ var TRIP_DATA = __TRIP_DATA__;
   var distUnit = U.distance || "mi";
   var tempUnit = U.temp || "F";
   var cur = (T.budget && T.budget.currency) || U.currency || "USD";
-  var curSym = ({ USD: "$", CAD: "C$", MXN: "MX$", CNY: "¥", RMB: "¥" })[cur] || "$";
 
   function esc(s) {
     if (s === null || s === undefined) return "";
@@ -315,7 +314,18 @@ var TRIP_DATA = __TRIP_DATA__;
       .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
   function el(id) { return document.getElementById(id); }
-  function money(n) { return curSym + Number(n || 0).toLocaleString("en-US"); }
+  function money(n, currency) {
+    var code = String(currency || cur).trim().toUpperCase();
+    var amount = Number(n || 0);
+    // Keep the roadbook's C$ and ¥ rather than en-US's CA$ and CN¥.
+    if (code === "CAD") return "C$" + amount.toLocaleString("en-US");
+    if (code === "CNY" || code === "RMB") return "¥" + amount.toLocaleString("en-US");
+    if (!/^[A-Z]{3}$/.test(code) || code === "XXX") {
+      return esc(code) + " " + amount.toLocaleString("en-US");
+    }
+    return amount.toLocaleString("en-US", { style: "currency", currency: code,
+      minimumFractionDigits: 0, maximumFractionDigits: 3 });
+  }
   function isZh() { return T.lang === "zh"; }
   var theme = document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark";
 
@@ -783,6 +793,13 @@ var TRIP_DATA = __TRIP_DATA__;
     return merged;
   }
 
+  function monthDayLabel(month, day) {
+    if (isZh()) return month + "月" + day + "日";
+    var months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    return day + " " + months[month - 1];
+  }
+
   function bookingDateParts(value, bookingRequired) {
     var match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || ""));
     if (!match) {
@@ -795,12 +812,8 @@ var TRIP_DATA = __TRIP_DATA__;
         iso: ""
       };
     }
-    var months = isZh()
-      ? ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"]
-      : ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
     return {
-      short: isZh() ? months[Number(match[2]) - 1] + Number(match[3]) + "日"
-                    : months[Number(match[2]) - 1] + " " + Number(match[3]),
+      short: monthDayLabel(Number(match[2]), Number(match[3])),
       year: match[1], iso: value
     };
   }
@@ -829,9 +842,6 @@ var TRIP_DATA = __TRIP_DATA__;
     if (price.amount === 0) {
       return '<span class="booking-price">' + (isZh() ? "免费" : "Free") + "</span>";
     }
-    var code = String(price.currency || cur).toUpperCase();
-    var symbols = { USD: "$", CAD: "C$", MXN: "MX$", CNY: "¥", RMB: "¥" };
-    var symbol = symbols[code] || code + " ";
     var prefix = price.reliability === "estimate" ? "≈" :
       (price.reliability === "reference" ? "~" : "");
     var unit = String(price.unit || "total").toLowerCase();
@@ -839,27 +849,23 @@ var TRIP_DATA = __TRIP_DATA__;
       ? { person: "/人", night: "/晚", vehicle: "/车", group: "/组", booking: "/次", total: "" }
       : { person: "/person", night: "/night", vehicle: "/vehicle", group: "/group",
           booking: "/booking", total: "" };
-    return '<span class="booking-price">' + prefix + symbol +
-      Number(price.amount).toLocaleString("en-US") + esc(units[unit] || ("/" + unit)) + "</span>";
+    return '<span class="booking-price">' + prefix + money(price.amount, price.currency) +
+      esc(units[unit] || ("/" + unit)) + "</span>";
   }
 
   function tripDateLabel(value) {
     var slash = /^(\d{1,2})\/(\d{1,2})$/.exec(String(value || ""));
-    if (slash) {
-      if (isZh()) return Number(slash[1]) + "月" + Number(slash[2]) + "日";
-      var months = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN",
-        "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
-      return months[Number(slash[1]) - 1] + " " + Number(slash[2]);
+    if (slash && +slash[1] >= 1 && +slash[1] <= 12 && +slash[2] >= 1 && +slash[2] <= 31) {
+      return monthDayLabel(Number(slash[1]), Number(slash[2]));
     }
-    var iso = bookingDateParts(value);
-    return iso.iso ? iso.short : String(value || "");
+    return String(value || "");
   }
 
   function bookingItemMetaMarkup(item) {
     var bits = [];
     if (item.visitDates && item.visitDates.length) {
       bits.push((isZh() ? "行程日期 " : "Trip date ") +
-        item.visitDates.map(tripDateLabel).join(", "));
+        esc(item.visitDates.map(tripDateLabel).join(", ")));
     }
     if (item.stayArea) bits.push(esc(item.stayArea));
     if (typeof item.nights === "number" && item.nights > 0) {
@@ -1039,7 +1045,7 @@ var TRIP_DATA = __TRIP_DATA__;
           iconSize: [26, 26], iconAnchor: [13, 13]
         });
         var pop = "<b>" + esc(p.n + ". " + p.name) + "</b><br><span style='color:#6b6258'>Day " +
-          esc(p.date) + "</span>" + navLinks(p.lat, p.lng, p.name);
+          esc(tripDateLabel(p.date)) + "</span>" + navLinks(p.lat, p.lng, p.name);
         L.marker([p.lat, p.lng], { icon: icon }).addTo(map).bindPopup(pop);
       });
       L.polyline(latlngs, { color: getComputedStyle(document.documentElement)
@@ -1073,7 +1079,7 @@ var TRIP_DATA = __TRIP_DATA__;
   }
   function dayCard(d, idx) {
     var s = '<div class="card day">';
-    s += '<div class="day-head"><span class="day-badge">Day ' + idx + " · " + esc(d.date) + "</span>";
+    s += '<div class="day-head"><span class="day-badge">Day ' + idx + " · " + esc(tripDateLabel(d.date)) + "</span>";
     s += '<span class="day-title">' + esc(d.title) + "</span></div>";
 
     var meta = [];

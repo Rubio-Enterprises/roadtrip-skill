@@ -1,5 +1,8 @@
+import json
 import os
 import re
+import shutil
+import subprocess
 
 import pytest
 from assets.generate import validate, build_html
@@ -98,18 +101,61 @@ class TestBuildHtml:
             build_html({"days": []}, "<html>no token here</html>")
 
 
-class TestCurrencySymbols:
-    """The renderer's currency map (template.html curSym) must cover every
-    currency the schema documents — a CNY trip once rendered as "$"."""
+def rendered_sections(trip):
+    """Run the generated page's inline scripts offline; collect their DOM writes."""
+    if not shutil.which("node"):
+        pytest.skip("needs Node.js to run the template's JS")
+    with open(TEMPLATE_PATH, encoding="utf-8") as f:
+        html = build_html(trip, f.read())
+    dom = """
+        const nodes = {};
+        function element() {
+            return {style: {}, setAttribute() {}, getAttribute() {},
+                    addEventListener() {}, querySelectorAll() { return []; }};
+        }
+        const document = {documentElement: element(), getElementById(id) {
+            return nodes[id] || (nodes[id] = element());
+        }};
+    """
+    scripts = re.findall(r"<script>(.*?)</script>", html, re.S)
+    output = """
+        const sections = Object.fromEntries(Object.entries(nodes).map(([id, el]) => [id, el.innerHTML]));
+        console.log(JSON.stringify(sections));
+    """
+    result = subprocess.run(["node"], input="\n".join([dom] + scripts + [output]),
+                            capture_output=True, encoding="utf-8", check=True)
+    return json.loads(result.stdout)
 
-    def test_cursym_map_covers_documented_currencies(self):
-        with open(TEMPLATE_PATH, encoding="utf-8") as f:
-            src = f.read()
-        m = re.search(r"curSym = \(\{(.+?)\}\)", src)
-        assert m, "curSym currency map not found in template.html"
-        mapping = m.group(1)
-        for code in ("USD", "CAD", "MXN", "CNY", "RMB"):
-            assert code in mapping, "currency %s missing from curSym map" % code
-        assert "¥" in mapping, "CNY/RMB must map to the ¥ symbol"
+
+@pytest.mark.parametrize("currency,printed", [
+    ("GBP", "£1,234.5"), ("EUR", "€1,234.5"), ("ZZZ", "ZZZ 1,234.5"),
+    ("USD", "$1,234.5"), ("CAD", "C$1,234.5"), ("MXN", "MX$1,234.5"),
+    ("CNY", "¥1,234.5"), ("RMB", "¥1,234.5"),
+])
+def test_budget_prints_trip_currency(currency, printed):
+    sections = rendered_sections({"days": [], "budget": {
+        "currency": currency, "items": [{"amount": 1234.5}], "total": 1234.5}})
+    assert printed in sections["budget"].replace("\xa0", " ")
+
+
+def test_booking_prints_item_currency_or_trip_currency():
+    sections = rendered_sections({"units": {"currency": "GBP"}, "bookingCountdown": [
+        {"item": "Guided walk", "price": {"amount": 18, "unit": "person"}},
+        {"item": "Hotel", "price": {"amount": 90, "currency": "EUR", "unit": "night"}},
+    ]})
+    assert "£18/person" in sections["bookingTabs"]
+    assert "€90/night" in sections["bookingTabs"]
+
+
+@pytest.mark.parametrize("date,lang,label", [
+    ("11/28", "en", "28 Nov"), ("1/2", "en", "2 Jan"),
+    ("11/28", "zh", "11月28日"), ("2026-11-28", "en", "2026-11-28"),
+    ("TBD & flexible", "en", "TBD &amp; flexible"),
+])
+def test_day_and_booking_show_the_same_trip_date(date, lang, label):
+    trip = {"lang": lang, "days": [{"date": date, "meal": {"name": "Cafe"}}]}
+    sections = rendered_sections(trip)
+    assert "Day 1 · " + label in sections["days"]
+    assert ("行程日期 " if lang == "zh" else "Trip date ") + label in sections["bookingTabs"]
 
 
